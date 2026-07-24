@@ -17,6 +17,10 @@ virtualenv/
 ko_KR.parquet
 persona_sample_100.csv
 
+# ── H3 실험 결과물 (실행하면 재생성 가능, 파일 수가 많아질 수 있음) ─
+experiments/h3/results/
+experiments/h3/analysis/
+
 # ── Python 캐시/빌드 산물 ───────────────────────────────────
 __pycache__/
 *.py[cod]

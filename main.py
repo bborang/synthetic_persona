@@ -24,6 +24,15 @@ EXIT_COMMANDS = {"exit", "종료"}
 LIGHT_COLUMNS = ["uuid", "first_name", "last_name", "sex", "age", "occupation", "region", "district"]
 SEARCH_RESULT_LIMIT = 30
 
+H3_QUESTIONS_PATH = Path(__file__).resolve().parent / "experiments" / "configs" / "h3_questions.json"
+H3_STIMULI_PATH = Path(__file__).resolve().parent / "experiments" / "configs" / "h3_stimuli.json"
+
+QUESTION_TYPE_ORDER = ["original", "paraphrase", "pressure"]
+QUESTION_TYPE_LABELS = {"original": "원본 질문", "paraphrase": "다른 표현으로 바꾼 질문", "pressure": "반박/압박형 질문"}
+
+INFO_LEVEL_ORDER = ["overview", "detailed", "with_counterarguments"]
+INFO_LEVEL_LABELS = {"overview": "개요만", "detailed": "구체적 수치 포함", "with_counterarguments": "반론/위험 정보 포함"}
+
 BIG5_LABELS = {
     "openness": "개방성",
     "conscientiousness": "성실성",
@@ -270,6 +279,65 @@ def choose_persona_uuid(index_df: pd.DataFrame) -> str:
             return uuid_value
 
 
+def load_h3_content() -> tuple[dict, dict] | tuple[None, None]:
+    """H3 실험용 질문/자극 JSON을 로드. 파일이 없으면 (None, None)."""
+    if not H3_QUESTIONS_PATH.exists() or not H3_STIMULI_PATH.exists():
+        return None, None
+    with open(H3_QUESTIONS_PATH, encoding="utf-8") as f:
+        questions = json.load(f)
+    with open(H3_STIMULI_PATH, encoding="utf-8") as f:
+        stimuli = json.load(f)
+    return questions, stimuli
+
+
+def choose_from_labels(title: str, order: list[str], labels: dict[str, str], default: str) -> str:
+    print(f"\n{title}을 선택하세요 (엔터 시 기본값: {labels[default]})")
+    for i, key in enumerate(order, start=1):
+        print(f"  {i}) {labels[key]}")
+    choice = safe_input(f"선택 (1-{len(order)}, 엔터=기본값): ").strip()
+    if not choice:
+        return default
+    if choice.isdigit() and 1 <= int(choice) <= len(order):
+        return order[int(choice) - 1]
+    print("올바르지 않은 입력이라 기본값을 사용합니다.")
+    return default
+
+
+def choose_opening_message() -> str | None:
+    """H3 토픽을 고르고 질문유형/정보량을 선택해 오프닝 메시지를 구성.
+    토픽 파일이 없거나 '주제 없이 자유롭게 대화'를 고르면 None."""
+    questions, stimuli = load_h3_content()
+    if questions is None:
+        return None
+
+    topics = [t for t in questions if t in stimuli]
+    if not topics:
+        return None
+
+    print("\n=== 대화 주제를 선택하세요 ===")
+    for i, topic in enumerate(topics, start=1):
+        label = stimuli[topic].get("topic") or questions[topic].get("topic") or topic
+        print(f"  {i}) {label}")
+    free_chat_option = len(topics) + 1
+    print(f"  {free_chat_option}) 주제 없이 자유롭게 대화")
+
+    while True:
+        choice = safe_input(f"선택 (1-{free_chat_option}): ").strip()
+        if choice.isdigit() and 1 <= int(choice) <= len(topics):
+            topic = topics[int(choice) - 1]
+            break
+        if choice.isdigit() and int(choice) == free_chat_option:
+            return None
+        print("올바른 번호를 입력해주세요.")
+
+    question_type = choose_from_labels("질문 유형", QUESTION_TYPE_ORDER, QUESTION_TYPE_LABELS, default="original")
+    info_level = choose_from_labels("정보량 단계", INFO_LEVEL_ORDER, INFO_LEVEL_LABELS, default="overview")
+
+    stimulus_text = stimuli[topic][info_level]
+    question_text = questions[topic][question_type]
+    return f"{stimulus_text}\n\n{question_text}"
+
+
 def build_system_prompt(row: pd.Series) -> str:
     name = get_full_name(row)
     sections: list[str] = [f"당신은 '{name}'입니다. 지금부터 아래 설명에 맞는 인물이 되어 사용자와 대화합니다."]
@@ -406,13 +474,53 @@ def build_system_prompt(row: pd.Series) -> str:
     return "\n\n".join(sections)
 
 
-def run_chat_loop(client, model_name: str, persona_name: str, system_prompt: str) -> None:
+def run_chat_loop(
+    client, model_name: str, persona_name: str, system_prompt: str, opening_message: str | None = None
+) -> None:
     messages = [{"role": "system", "content": system_prompt}]
 
     print(f"\n=== '{persona_name}' 페르소나와 대화를 시작합니다 ===")
     print("(종료하려면 'exit' 또는 '종료'를 입력하세요)\n")
 
     import openai  # 예외 클래스 접근용
+
+    def send(user_text: str) -> bool:
+        """user_text를 보내고 응답을 출력. 대화를 계속할 수 있으면 True, 중단해야 하면 False."""
+        messages.append({"role": "user", "content": user_text})
+        try:
+            response = client.chat.completions.create(
+                model=model_name,
+                messages=messages,
+            )
+            reply = response.choices[0].message.content
+            messages.append({"role": "assistant", "content": reply})
+            print(f"\n{persona_name}: {reply}\n")
+            return True
+        except openai.AuthenticationError:
+            print("[오류] API 키가 유효하지 않습니다. .env의 OPENAI_API_KEY를 확인해주세요.")
+            messages.pop()
+            return False
+        except openai.RateLimitError:
+            print("[오류] API 요청 한도를 초과했습니다. 잠시 후 다시 시도해주세요.")
+            messages.pop()
+            return True
+        except openai.APIConnectionError:
+            print("[오류] 네트워크 연결에 문제가 발생했습니다. 인터넷 연결을 확인해주세요.")
+            messages.pop()
+            return True
+        except openai.APIStatusError as e:
+            print(f"[오류] OpenAI API 오류가 발생했습니다 (status={e.status_code}). 잠시 후 다시 시도해주세요.")
+            messages.pop()
+            return True
+        except Exception as e:
+            print(f"[오류] 예상치 못한 문제가 발생했습니다: {e}")
+            messages.pop()
+            return True
+
+    if opening_message:
+        print(f"You: {opening_message}\n")
+        if not send(opening_message):
+            return
 
     while True:
         try:
@@ -427,33 +535,8 @@ def run_chat_loop(client, model_name: str, persona_name: str, system_prompt: str
             print("대화를 종료합니다.")
             break
 
-        messages.append({"role": "user", "content": user_input})
-
-        try:
-            response = client.chat.completions.create(
-                model=model_name,
-                messages=messages,
-            )
-            reply = response.choices[0].message.content
-            messages.append({"role": "assistant", "content": reply})
-            print(f"\n{persona_name}: {reply}\n")
-
-        except openai.AuthenticationError:
-            print("[오류] API 키가 유효하지 않습니다. .env의 OPENAI_API_KEY를 확인해주세요.")
-            messages.pop()  # 실패한 사용자 메시지 제거
+        if not send(user_input):
             break
-        except openai.RateLimitError:
-            print("[오류] API 요청 한도를 초과했습니다. 잠시 후 다시 시도해주세요.")
-            messages.pop()
-        except openai.APIConnectionError:
-            print("[오류] 네트워크 연결에 문제가 발생했습니다. 인터넷 연결을 확인해주세요.")
-            messages.pop()
-        except openai.APIStatusError as e:
-            print(f"[오류] OpenAI API 오류가 발생했습니다 (status={e.status_code}). 잠시 후 다시 시도해주세요.")
-            messages.pop()
-        except Exception as e:
-            print(f"[오류] 예상치 못한 문제가 발생했습니다: {e}")
-            messages.pop()
 
 
 def main() -> None:
@@ -464,6 +547,7 @@ def main() -> None:
     selected_row = fetch_full_persona(selected_uuid)
     persona_name = get_full_name(selected_row)
     system_prompt = build_system_prompt(selected_row)
+    opening_message = choose_opening_message()
 
     from openai import OpenAI
 
@@ -473,7 +557,7 @@ def main() -> None:
         print(f"[오류] OpenAI 클라이언트를 초기화하지 못했습니다: {e}", file=sys.stderr)
         sys.exit(1)
 
-    run_chat_loop(client, MODEL_NAME, persona_name, system_prompt)
+    run_chat_loop(client, MODEL_NAME, persona_name, system_prompt, opening_message=opening_message)
 
 
 if __name__ == "__main__":
