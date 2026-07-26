@@ -1,0 +1,35 @@
+{
+  "experiment_id": "H3_spotcheck_gpt5",
+  "topic": "medical_school_quota",
+  "results_topic": "medical_school_quota_spotcheck",
+  "personas_file": "experiments/h3/sampled_personas_spotcheck.json",
+  "repetitions": 1,
+  "question_types": ["original"],
+  "info_levels": ["overview", "detailed", "with_counterarguments"],
+  "session_types": ["new_session"],
+  "_pricing_note": "gpt-5 계열 가격이 아직 공개/확정되지 않아 pricing_usd_per_1k_tokens를 0으로 두었습니다. OpenAI가 정식 요금을 공개하면 갱신하세요.",
+  "models": {
+    "gpt56": {
+      "model_id": "gpt-5.6",
+      "generation_params": {
+        "temperature": 0.7,
+        "max_tokens": 4096
+      },
+      "pricing_usd_per_1k_tokens": {
+        "prompt": 0,
+        "completion": 0
+      }
+    },
+    "gpt54": {
+      "model_id": "gpt-5.4",
+      "generation_params": {
+        "temperature": 0.7,
+        "max_tokens": 4096
+      },
+      "pricing_usd_per_1k_tokens": {
+        "prompt": 0,
+        "completion": 0
+      }
+    }
+  }
+}

@@ -8,6 +8,7 @@ config의 "personas_file"이 가리키는 JSON에 담긴 페르소나들에 대�
 사용법:
     python scripts/run_h3_experiment.py --model gpt4o_mini
     python scripts/run_h3_experiment.py --model gpt4o_mini --max-personas 2 --max-reps 1  # 소규모 테스트용
+    python scripts/run_h3_experiment.py --config experiments/configs/h3_config_spotcheck.json --model gpt56nano
 """
 
 import argparse
@@ -26,7 +27,7 @@ from agent import ask_persona, AgentAPIError  # noqa: E402
 from main import fetch_full_persona  # noqa: E402
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-CONFIG_PATH = PROJECT_ROOT / "experiments" / "configs" / "h3_config.json"
+DEFAULT_CONFIG_PATH = "experiments/configs/h3_config.json"
 QUESTIONS_PATH = PROJECT_ROOT / "experiments" / "configs" / "h3_questions.json"
 STIMULI_PATH = PROJECT_ROOT / "experiments" / "configs" / "h3_stimuli.json"
 RESULTS_ROOT = PROJECT_ROOT / "experiments" / "h3" / "results"
@@ -122,18 +123,33 @@ def compute_run_meta(model_id: str, results_dir: Path, total_calls: int, pricing
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="H3 실험 실행")
-    parser.add_argument("--model", required=True, choices=["gpt4o", "gpt4o_mini", "gpt41"], help="h3_config.json의 models 키")
+    parser.add_argument("--model", required=True, help="config 파일의 models에 등록된 라벨 (예: gpt4o_mini)")
+    parser.add_argument(
+        "--config",
+        default=DEFAULT_CONFIG_PATH,
+        help=f"h3 실험 설정 파일 경로, 프로젝트 루트 기준 (기본: {DEFAULT_CONFIG_PATH})",
+    )
     parser.add_argument("--max-personas", type=int, default=None, help="페르소나 목록에서 앞에서 N명만 사용 (기본: 전체)")
     parser.add_argument("--max-reps", type=int, default=None, help="config의 repetitions 값을 무시하고 N회만 반복 (기본: config 값)")
     args = parser.parse_args()
 
-    config = load_json(CONFIG_PATH)
+    config_path = PROJECT_ROOT / args.config
+    config = load_json(config_path)
     questions = load_json(QUESTIONS_PATH)
     stimuli = load_json(STIMULI_PATH)
 
+    available_labels = sorted(config.get("models", {}).keys())
+    if args.model not in available_labels:
+        print(
+            f"[오류] --model={args.model!r} 이 {config_path.name}의 models에 없습니다. "
+            f"사용 가능한 라벨: {available_labels}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
     personas_file = config.get("personas_file")
     if not personas_file:
-        print("[오류] h3_config.json에 \"personas_file\" 필드가 없습니다.", file=sys.stderr)
+        print(f"[오류] {config_path.name}에 \"personas_file\" 필드가 없습니다.", file=sys.stderr)
         sys.exit(1)
     personas_data = load_json(PROJECT_ROOT / personas_file)
 
@@ -144,10 +160,12 @@ def main() -> None:
     topic_questions = questions[topic]
     topic_stimuli = stimuli[topic]
 
-    model_config = config["models"].get(args.model)
-    if model_config is None:
-        print(f"[오류] --model={args.model!r} 이 h3_config.json의 models에 없습니다.", file=sys.stderr)
-        sys.exit(1)
+    # results_topic: 결과 저장 폴더명. 지정 안 하면 topic과 동일(기존 동작과 100% 동일).
+    # 같은 topic 콘텐츠(질문/자극문)를 쓰면서 결과만 별도 폴더에 저장하고 싶을 때 사용
+    # (예: 본 실험 medical_school_quota/ 를 건드리지 않는 spotcheck 실행).
+    results_topic = config.get("results_topic", topic)
+
+    model_config = config["models"][args.model]
     model_id = model_config["model_id"]
     generation_params = model_config["generation_params"]
     pricing = model_config["pricing_usd_per_1k_tokens"]
@@ -161,7 +179,7 @@ def main() -> None:
     if args.max_personas is not None:
         personas = personas[: args.max_personas]
 
-    results_dir = RESULTS_ROOT / topic / args.model / "raw_responses"
+    results_dir = RESULTS_ROOT / results_topic / args.model / "raw_responses"
     results_dir.mkdir(parents=True, exist_ok=True)
 
     print(f"페르소나 {len(personas)}명 로딩 중...")
@@ -236,7 +254,7 @@ def main() -> None:
     run_meta = compute_run_meta(model_id, results_dir, total_calls, pricing, start_time, end_time)
     run_meta["failed_calls_this_run"] = failed_this_run
 
-    meta_path = RESULTS_ROOT / topic / args.model / "run_meta.json"
+    meta_path = RESULTS_ROOT / results_topic / args.model / "run_meta.json"
     with open(meta_path, "w", encoding="utf-8") as f:
         json.dump(run_meta, f, ensure_ascii=False, indent=2)
 
