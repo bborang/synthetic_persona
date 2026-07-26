@@ -13,18 +13,9 @@
 
 1. **`.env` 파일 (본인 OpenAI API 키)**
    `.env.example`을 복사해 `.env`를 만들고, 본인의 API 키를 입력하세요.
-   ```bash
-   cp .env.example .env
-   ```
-   ```
-   OPENAI_API_KEY=본인의_실제_API_키
-   ```
-   `.env`는 절대 커밋하지 마세요. (`.gitignore`에 이미 등록되어 있습니다.)
 
 2. **`ko_KR.parquet` (원본 페르소나 데이터, 약 2.8GB)**
-   용량 문제뿐 아니라 개인정보/민감정보 성격상 Git에 올리지 않습니다.
-   전달받은 파일을 `test_API` 폴더 **루트**에 그대로 넣어주세요.
-   > TODO: 원본 데이터 전달 방법/경로를 여기에 채워주세요. (예: 사내 스토리지 링크, 담당자 문의 등)
+  원본파일을 폴더 **루트**에 그대로 넣어주세요.
 
 ## 1. 가상환경 생성 및 활성화
 
@@ -43,9 +34,6 @@ venv\Scripts\activate
 ```bash
 pip install -r requirements.txt
 ```
-
-`main.py` 실행에는 `openai`/`pandas`/`pyarrow`/`python-dotenv`만 있으면 됩니다.
-`numpy`/`scipy`/`matplotlib`/`scikit-learn`/`tqdm`은 `scripts/` 아래 H3 실험·분석 스크립트에서만 사용합니다.
 
 ## 3. API 키 설정
 
@@ -91,14 +79,13 @@ python main.py
 `ko_KR.parquet`는 100만 행 × 51개 컬럼(약 2.8GB)이라, 매번 전체를 pandas로 불러오면
 느리고 메모리도 많이 사용합니다. 그래서:
 
-- 목록 탐색(랜덤/검색/인덱스 조회) 단계에서는 `uuid, first_name, last_name, sex, age, occupation, region, district` 등
-  가벼운 컬럼만 우선 로드합니다(`pandas.read_parquet(..., columns=[...])`).
-- 사용자가 페르소나 1명을 최종 확정하면, 그 uuid로 `pandas.read_parquet(..., filters=[("uuid", "=", 값)])`를 호출해
-  해당 1행에 대해서만 51개 컬럼 전체를 조회합니다.
+- 목록 탐색(랜덤/검색/인덱스 조회) 단계에서는 `이름, 성별, 나이, 직업, 지역` 등 가벼운 컬럼만 우선 로드합니다. 
+- 사용자가 페르소나 1명을 최종 확정하면, 그 uuid로 호출해 해당 1행에 대해서만 51개 컬럼 전체를 조회합니다.
 
 ### 모델 변경 (`main.py`)
 
-기본 모델은 `gpt-4o-mini`입니다. 다른 모델을 쓰려면 `main.py` 상단의 `MODEL_NAME` 값을 바꿔주세요.
+기본 모델은 `gpt-4o-mini`입니다. 
+다른 모델을 쓰려면 `main.py` 상단의 `MODEL_NAME` 값을 바꿔주세요.
 
 ```python
 MODEL_NAME = "gpt-4o-mini"
