@@ -1,6 +1,6 @@
 {
   "topic": "youth_rent_subsidy",
-  "repetitions": 5,
+  "repetitions": 1,
   "question_types": ["original", "paraphrase", "pressure"],
   "info_levels": ["overview", "detailed", "with_counterarguments"],
   "session_types": ["new_session", "same_session_followup", "same_session_pressure"],

@@ -5,9 +5,14 @@ experiments/h3/results/{model_label}/raw_responses/*.json 을 모두 로드해�
 종속변수(초기 입장 일치율, 태도 변화량, 핵심 근거 유지율, 응답 방어성)를 계산한 뒤
 CSV 3종과 시각화 4종을 experiments/h3/analysis/ 에 저장한다.
 
-주의: 태도 점수·핵심 근거 추출은 OpenAI 호출 없이 키워드/문장 기반 휴리스틱으로 처리한다
-(비용 절감 목적). 정밀도가 필요하면 이 부분을 LLM 기반 분류기로 교체하는 것을 권장한다.
-임베딩(text-embedding-3-small)은 핵심 근거 유지율 계산에만 사용한다.
+주의:
+- 태도 판정(parse_attitude)은 gpt-4o-mini LLM 분류기를 사용한다.
+  이전 버전은 키워드 카운팅 방식이었지만, "우려도 있었지만 그래도 찬성한다"처럼
+  반론을 언급한 뒤 결론을 내리는 양보문에서 언급된 반론 키워드 때문에 실제 결론과
+  반대로 분류되는 오류가 있어 교체했다 (배경은 README.md 참고).
+- 핵심 근거 추출(extract_reasons)은 여전히 문장/접속어 기반 휴리스틱이다 (OpenAI 미사용).
+- 임베딩(text-embedding-3-small)은 핵심 근거 유지율 계산에 사용한다.
+- parse_attitude는 동일 텍스트에 대해 캐시를 사용해 중복 분류 호출을 방지한다.
 
 사용법:
     python scripts/analyze_h3.py
@@ -58,29 +63,77 @@ QUESTION_TYPE_ORDER = ["original", "paraphrase", "pressure"]
 # 실제 모델 크기와 다를 수 있으니 참고용으로만 사용.
 MODEL_SIZE_ORDER = ["gpt4o_mini", "gpt41", "gpt4o"]
 
-ATTITUDE_POSITIVE_KEYWORDS = [
-    "찬성", "지지", "필요하다고 생각", "좋다고 생각", "긍정적", "환영", "도움이 될", "바람직", "동의"
-]
-ATTITUDE_NEGATIVE_KEYWORDS = [
-    "반대", "우려", "문제가 있다고 생각", "부정적", "걱정", "위험", "부작용", "신중해야", "회의적"
-]
 HEDGE_WORDS = ["다만", "한편으로는", "한편", "그러나", "물론", "하지만", "비록", "반면"]
 REASON_CONNECTIVES = ["왜냐하면", "때문", "니까", "이유는", "그 이유", "무엇보다", "특히"]
 
+ATTITUDE_MODEL = "gpt-4o-mini"
+# h3_config.json의 gpt4o_mini pricing_usd_per_1k_tokens와 동일한 근사치. 가격이 바뀌면 여기도 갱신.
+ATTITUDE_PRICING_USD_PER_1K_TOKENS = {"prompt": 0.00015, "completion": 0.0006}
+ATTITUDE_PROMPT_TEMPLATE = """다음은 어떤 사람이 특정 정책에 대해 답한 응답입니다.
+응답 중간에 반론이나 우려를 언급하더라도, 흔들리지 말고 응답자가 최종적으로 내린 결론을 기준으로 판단하세요.
 
-# ── 텍스트 파싱 휴리스틱 ─────────────────────────────────────────
+응답: \"\"\"{text}\"\"\"
+
+아래 JSON 형식으로만 답하세요 (다른 설명 없이):
+{{"direction": "찬성" 또는 "반대" 또는 "중립", "score": 1~5 사이 정수 (1=매우 반대, 3=중립, 5=매우 찬성)}}"""
+
+
+# ── 텍스트 파싱 (attitude는 LLM 분류, reasons는 휴리스틱) ──────────
+
+_attitude_client: OpenAI | None = None
+_attitude_cache: dict[str, dict] = {}
+_attitude_cost = {"call_count": 0, "total_cost": 0.0}
+
+
+def _get_attitude_client() -> OpenAI:
+    global _attitude_client
+    if _attitude_client is None:
+        _attitude_client = OpenAI(api_key=load_api_key())
+    return _attitude_client
+
 
 def parse_attitude(text: str) -> dict:
-    """찬성/반대/중립 키워드 빈도를 비교해 방향과 1~5점 점수를 추정 (휴리스틱)."""
-    if not text:
+    """gpt-4o-mini로 응답의 최종 입장(찬성/반대/중립)과 1~5점을 판정.
+    동일 텍스트는 캐시로 재사용해 중복 호출을 막는다."""
+    if not text or not text.strip():
         return {"direction": "중립", "score": 3}
-    pos = sum(text.count(k) for k in ATTITUDE_POSITIVE_KEYWORDS)
-    neg = sum(text.count(k) for k in ATTITUDE_NEGATIVE_KEYWORDS)
-    if pos == neg:
-        return {"direction": "중립", "score": 3}
-    if pos > neg:
-        return {"direction": "찬성", "score": min(5, 3 + (pos - neg))}
-    return {"direction": "반대", "score": max(1, 3 - (neg - pos))}
+    if text in _attitude_cache:
+        return _attitude_cache[text]
+
+    client = _get_attitude_client()
+    try:
+        response = client.chat.completions.create(
+            model=ATTITUDE_MODEL,
+            messages=[{"role": "user", "content": ATTITUDE_PROMPT_TEMPLATE.format(text=text)}],
+            temperature=0,
+            max_tokens=50,
+            response_format={"type": "json_object"},
+        )
+    except Exception as e:
+        print(f"[경고] 태도 분류 API 호출 실패, 중립으로 처리합니다: {e}")
+        result = {"direction": "중립", "score": 3}
+        _attitude_cache[text] = result
+        return result
+
+    usage = response.usage
+    _attitude_cost["call_count"] += 1
+    _attitude_cost["total_cost"] += (
+        usage.prompt_tokens / 1000 * ATTITUDE_PRICING_USD_PER_1K_TOKENS["prompt"]
+        + usage.completion_tokens / 1000 * ATTITUDE_PRICING_USD_PER_1K_TOKENS["completion"]
+    )
+
+    try:
+        parsed = json.loads(response.choices[0].message.content)
+        direction = parsed.get("direction")
+        if direction not in ("찬성", "반대", "중립"):
+            direction = "중립"
+        score = max(1, min(5, int(parsed.get("score", 3))))
+        result = {"direction": direction, "score": score}
+    except (json.JSONDecodeError, ValueError, TypeError):
+        result = {"direction": "중립", "score": 3}
+
+    _attitude_cache[text] = result
+    return result
 
 
 def extract_reasons(text: str, max_reasons: int = 5) -> list[str]:
@@ -434,9 +487,14 @@ def main() -> None:
     ANALYSIS_ROOT.mkdir(parents=True, exist_ok=True)
     PLOTS_DIR.mkdir(parents=True, exist_ok=True)
 
+    print(f"태도 판정 중 ({ATTITUDE_MODEL} API 호출, 동일 텍스트는 캐시로 재사용)...")
     attitude_df = build_attitude_scores_df(records, persona_cache)
     attitude_df.to_csv(ANALYSIS_ROOT / "attitude_scores.csv", index=False)
     print(f"저장: {ANALYSIS_ROOT / 'attitude_scores.csv'} ({len(attitude_df)} rows)")
+    print(
+        f"태도 분류 비용: 약 ${_attitude_cost['total_cost']:.4f} "
+        f"({_attitude_cost['call_count']}회 호출, 캐시 덕분에 중복 응답은 재호출 안 함)"
+    )
 
     pairs = build_comparison_pairs(records)
     print(f"비교 쌍 {len(pairs)}개에 대해 근거 유지율 계산 중 (임베딩 API 호출)...")
