@@ -1,7 +1,7 @@
 """H3 실험 실행 스크립트.
 
 experiments/configs/h3_config.json 의 설정으로,
-experiments/h3/sampled_personas.json 에 담긴 페르소나들에 대해
+config의 "personas_file"이 가리키는 JSON에 담긴 페르소나들에 대해
 질문유형 3가지 x 정보량 3단계 x 세션유형 3가지 x 반복 5회를 실행하고,
 각 결과를 experiments/h3/results/{model_label}/raw_responses/ 에 저장한다.
 
@@ -28,7 +28,6 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 CONFIG_PATH = PROJECT_ROOT / "experiments" / "configs" / "h3_config.json"
 QUESTIONS_PATH = PROJECT_ROOT / "experiments" / "configs" / "h3_questions.json"
 STIMULI_PATH = PROJECT_ROOT / "experiments" / "configs" / "h3_stimuli.json"
-PERSONAS_PATH = PROJECT_ROOT / "experiments" / "h3" / "sampled_personas.json"
 RESULTS_ROOT = PROJECT_ROOT / "experiments" / "h3" / "results"
 
 
@@ -128,7 +127,12 @@ def main() -> None:
     config = load_json(CONFIG_PATH)
     questions = load_json(QUESTIONS_PATH)
     stimuli = load_json(STIMULI_PATH)
-    personas_data = load_json(PERSONAS_PATH)
+
+    personas_file = config.get("personas_file")
+    if not personas_file:
+        print("[오류] h3_config.json에 \"personas_file\" 필드가 없습니다.", file=sys.stderr)
+        sys.exit(1)
+    personas_data = load_json(PROJECT_ROOT / personas_file)
 
     topic = config["topic"]
     if topic not in questions or topic not in stimuli:

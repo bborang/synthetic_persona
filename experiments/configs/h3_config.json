@@ -1,5 +1,6 @@
 {
-  "topic": "youth_rent_subsidy",
+  "topic": "medical_school_quota",
+  "personas_file": "experiments/h3/sampled_personas_medical.json",
   "repetitions": 1,
   "question_types": ["original", "paraphrase", "pressure"],
   "info_levels": ["overview", "detailed", "with_counterarguments"],

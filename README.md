@@ -77,11 +77,12 @@ python main.py
    - 각 화면에서 `b` 입력 시 메뉴로 되돌아갈 수 있습니다.
 3. 번호를 입력해 페르소나를 확정하면, 그 uuid 1건에 대해서만 51개 컬럼 전체를 조회합니다.
 4. **대화 주제를 선택합니다** (`experiments/configs/h3_questions.json`/`h3_stimuli.json`이 있을 때만 표시됨):
-   - `1~3` 중 하나: H3 실험 주제(청년 월세 지원 / DDP 철거 후 재개발 / 고령자 AI 돌봄) 선택 후,
-     질문 유형(원본/다른 표현/반박형, 엔터 시 원본)과 정보량 단계(개요만/구체적 수치/반론 포함, 엔터 시 개요만)를 고르면
+   - 등록된 주제(청년 월세 지원 / DDP 철거 후 재개발 / 고령자 AI 돌봄 / 의대 정원 확대) 중 하나를 고르면,
+     질문 유형(원본/다른 표현/반박형, 엔터 시 원본)과 정보량 단계(개요만/구체적 수치/반론 포함, 엔터 시 개요만)를 물어본 뒤
      해당 자극문+질문이 첫 메시지로 자동 전송됩니다.
-   - `4`: 주제 없이 바로 자유 대화 시작.
+   - 마지막 번호: 주제 없이 바로 자유 대화 시작.
    - 두 JSON 파일이 없으면 이 단계는 자동으로 생략되고 바로 자유 대화로 들어갑니다.
+   - 두 파일에 같은 키로 주제를 추가하면 메뉴에 자동으로 반영됩니다 (코드 수정 불필요).
 5. 선택한 페르소나가 되어 자유롭게 대화를 이어갑니다.
 6. `exit` 또는 `종료`를 입력하면 대화가 끝납니다.
 
@@ -106,16 +107,21 @@ MODEL_NAME = "gpt-4o-mini"
 ## 5. H3 실험 배치 실행 (`scripts/run_h3_experiment.py`)
 
 `experiments/configs/h3_config.json`에 지정된 **주제 1개**에 대해, 페르소나별로
-질문유형 3가지 × 정보량 3단계 × 세션유형 3가지 × 반복 5회(총 135회/페르소나)를 자동으로 실행합니다.
+질문유형 3가지 × 정보량 3단계 × 세션유형 3가지 × `repetitions`회를 자동으로 실행합니다
+(`repetitions`가 5면 페르소나당 135회, 현재 설정값인 1이면 페르소나당 27회).
 
 ```bash
 python scripts/run_h3_experiment.py --model gpt4o_mini   # gpt4o | gpt4o_mini | gpt41
 ```
 
 - **설정 파일**
-  - `experiments/configs/h3_config.json`: 실행할 `topic`, `repetitions`, 모델 라벨별 `model_id`/`generation_params`/`pricing_usd_per_1k_tokens`
+  - `experiments/configs/h3_config.json`: 실행할 `topic`, 페르소나 목록 경로 `personas_file`, `repetitions`,
+    모델 라벨별 `model_id`/`generation_params`/`pricing_usd_per_1k_tokens`
   - `experiments/configs/h3_questions.json`, `h3_stimuli.json`: 주제별 질문 3종/자극문 3단계
-  - `experiments/h3/sampled_personas.json`: 실험 대상 페르소나 uuid 목록
+  - `personas_file`이 가리키는 JSON: 실험 대상 페르소나 목록. `{"personas": [{"persona_id": "...", ...}, ...]}` 형태면 되고,
+    `group` 같은 추가 메타데이터 필드를 넣어도 됩니다 (아래 "페르소나 샘플링" 참고). 현재 값:
+    - `topic`: `medical_school_quota` (의대 정원 확대)
+    - `personas_file`: `experiments/h3/sampled_personas_medical.json`
 - **세션유형**: `new_session`(매 회 새 대화) / `same_session_followup`(같은 세션에서 같은 질문 재확인) / `same_session_pressure`(같은 세션에서 반박 질문 추가)
 - **결과 저장**: `experiments/h3/results/{model_label}/raw_responses/{persona_id}_{question_type}_{info_level}_{session}_{rep}.json`
   (한 조합이 1~2턴이면 그 턴들을 모두 담아 1파일로 저장)
@@ -125,6 +131,22 @@ python scripts/run_h3_experiment.py --model gpt4o_mini   # gpt4o | gpt4o_mini | 
 - **비용 로그**: 실행 중 `agent.py`가 API 호출 10회마다 `[호출 N/전체] 누적 비용: $X.XX (입력: $X.XX, 출력: $X.XX)` 를 출력합니다.
 
 > `h3_config.json`의 `pricing_usd_per_1k_tokens`는 참고용 근사치입니다. 실행 전 OpenAI 최신 요금과 맞춰 갱신하세요.
+
+### 조건별 페르소나 샘플링 (`scripts/sample_medical_personas.py`)
+
+`ko_KR.parquet`에서 지역(서울/지방) × 연령(청년/고령) 2×2 집단별로 조건에 맞는 페르소나를 뽑아
+`experiments/h3/sampled_personas_medical.json`을 생성합니다 (`h3_config.json`의 `personas_file`이 가리키는 파일).
+
+```bash
+python scripts/sample_medical_personas.py
+```
+
+- **집단**: `서울_청년`(region에 "서울" 포함, 20~29세) / `서울_고령`(서울, 55세 이상) /
+  `지방_청년`(서울 미포함, 20~29세) / `지방_고령`(서울 미포함, 55세 이상), 각 2명씩 총 8명
+- 집단 안에 의료 관련 직업(의사/간호사/약사/의료/병원 키워드) 종사자가 있으면 최소 1명은 우선 포함
+- `seed=42`로 고정되어 있어 다시 실행해도 동일한 8명이 뽑힙니다
+- 출력 JSON의 각 페르소나에 `group` 라벨이 붙어 있어, `analyze_h3.py` 등에서 집단별로 나눠 분석할 때 바로 활용 가능합니다
+- 다른 주제·조건으로 새 샘플이 필요하면 이 스크립트를 복사해서 집단 정의(`GROUPS`)만 바꾸면 됩니다
 
 ## 6. H3 결과 분석 (`scripts/analyze_h3.py`)
 
@@ -180,10 +202,12 @@ result = ask_persona(
 | `agent.py` | `ask_persona()` — 모델/파라미터를 외부에서 주입 가능한 API 호출 모듈, 비용 누적 로그 포함 |
 | `scripts/run_h3_experiment.py` | H3 실험 배치 실행 (`--model gpt4o\|gpt4o_mini\|gpt41`) |
 | `scripts/analyze_h3.py` | H3 실험 결과 분석 → CSV 3종 + 그래프 4종 |
-| `experiments/configs/h3_config.json` | 실험 설정 (topic, repetitions, 모델별 파라미터/가격) |
-| `experiments/configs/h3_questions.json` | 주제별 질문 3종(원본/다른 표현/반박형) |
-| `experiments/configs/h3_stimuli.json` | 주제별 자극문 3단계(개요/상세/반론 포함) |
-| `experiments/h3/sampled_personas.json` | 실험 대상 페르소나 uuid 목록 |
+| `scripts/sample_medical_personas.py` | 지역×연령 2×2 집단별 페르소나 샘플링 (seed=42, 의료 직업 우선 포함) |
+| `experiments/configs/h3_config.json` | 실험 설정 (topic, personas_file, repetitions, 모델별 파라미터/가격) |
+| `experiments/configs/h3_questions.json` | 주제별 질문 3종(원본/다른 표현/반박형) — 청년 월세 지원, DDP 재개발, 고령자 AI 돌봄, 의대 정원 확대 |
+| `experiments/configs/h3_stimuli.json` | 주제별 자극문 3단계(개요/상세/반론 포함) — 위와 동일한 4개 주제 |
+| `experiments/h3/sampled_personas.json` | 기존 실험(청년 월세 지원 등)용 페르소나 uuid 목록 |
+| `experiments/h3/sampled_personas_medical.json` | 의대 정원 확대 실험용 페르소나 목록 (지역×연령 그룹 라벨 포함) |
 | `experiments/h3/results/` | 실행 결과 원본 (Git 제외, 재생성 가능) |
 | `experiments/h3/analysis/` | 분석 결과 CSV/그래프 (Git 제외, 재생성 가능) |
 | `requirements.txt` | 필요 패키지 목록 |
