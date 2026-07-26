@@ -1,9 +1,9 @@
 """H3 실험 결과 분석 스크립트.
 
-experiments/h3/results/{model_label}/raw_responses/*.json 을 모두 로드해서
-태도 점수/핵심 근거/페르소나 속성 언급 여부를 파싱하고,
+h3_config.json의 topic을 읽어, experiments/h3/results/{topic}/{model_label}/raw_responses/*.json 을
+모두 로드해서 태도 점수/핵심 근거/페르소나 속성 언급 여부를 파싱하고,
 종속변수(초기 입장 일치율, 태도 변화량, 핵심 근거 유지율, 응답 방어성)를 계산한 뒤
-CSV 3종과 시각화 4종을 experiments/h3/analysis/ 에 저장한다.
+CSV 3종과 시각화 4종을 experiments/h3/analysis/{topic}/ 에 저장한다.
 
 주의:
 - 태도 판정(parse_attitude)은 gpt-4o-mini LLM 분류기를 사용한다.
@@ -50,8 +50,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from main import fetch_full_persona, load_api_key, parse_list_field, safe_str  # noqa: E402
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-RESULTS_ROOT = PROJECT_ROOT / "experiments" / "h3" / "results"
-ANALYSIS_ROOT = PROJECT_ROOT / "experiments" / "h3" / "analysis"
+CONFIG_PATH = PROJECT_ROOT / "experiments" / "configs" / "h3_config.json"
+RESULTS_BASE = PROJECT_ROOT / "experiments" / "h3" / "results"
+ANALYSIS_BASE = PROJECT_ROOT / "experiments" / "h3" / "analysis"
+
+# main()에서 h3_config.json의 topic을 읽어 {RESULTS_BASE}/{topic}, {ANALYSIS_BASE}/{topic} 로 갱신된다.
+RESULTS_ROOT = RESULTS_BASE
+ANALYSIS_ROOT = ANALYSIS_BASE
 PLOTS_DIR = ANALYSIS_ROOT / "plots"
 
 EMBEDDING_MODEL = "text-embedding-3-small"
@@ -473,6 +478,19 @@ def plot_model_size_consistency(attitude_df: pd.DataFrame) -> None:
 # ── 메인 ─────────────────────────────────────────────────────────
 
 def main() -> None:
+    global RESULTS_ROOT, ANALYSIS_ROOT, PLOTS_DIR
+
+    if not CONFIG_PATH.exists():
+        print(f"[오류] 설정 파일을 찾을 수 없습니다: {CONFIG_PATH}", file=sys.stderr)
+        sys.exit(1)
+    with open(CONFIG_PATH, encoding="utf-8") as f:
+        config = json.load(f)
+    topic = config["topic"]
+
+    RESULTS_ROOT = RESULTS_BASE / topic
+    ANALYSIS_ROOT = ANALYSIS_BASE / topic
+    PLOTS_DIR = ANALYSIS_ROOT / "plots"
+
     records = load_all_results()
     if not records:
         print(f"[안내] {RESULTS_ROOT} 에 분석할 결과 파일이 없습니다. 먼저 run_h3_experiment.py를 실행해주세요.")

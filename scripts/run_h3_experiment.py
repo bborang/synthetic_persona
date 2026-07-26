@@ -2,11 +2,12 @@
 
 experiments/configs/h3_config.json 의 설정으로,
 config의 "personas_file"이 가리키는 JSON에 담긴 페르소나들에 대해
-질문유형 3가지 x 정보량 3단계 x 세션유형 3가지 x 반복 5회를 실행하고,
-각 결과를 experiments/h3/results/{model_label}/raw_responses/ 에 저장한다.
+질문유형 3가지 x 정보량 3단계 x 세션유형 3가지 x repetitions회를 실행하고,
+각 결과를 experiments/h3/results/{topic}/{model_label}/raw_responses/ 에 저장한다.
 
 사용법:
     python scripts/run_h3_experiment.py --model gpt4o_mini
+    python scripts/run_h3_experiment.py --model gpt4o_mini --max-personas 2 --max-reps 1  # 소규모 테스트용
 """
 
 import argparse
@@ -122,6 +123,8 @@ def compute_run_meta(model_id: str, results_dir: Path, total_calls: int, pricing
 def main() -> None:
     parser = argparse.ArgumentParser(description="H3 실험 실행")
     parser.add_argument("--model", required=True, choices=["gpt4o", "gpt4o_mini", "gpt41"], help="h3_config.json의 models 키")
+    parser.add_argument("--max-personas", type=int, default=None, help="페르소나 목록에서 앞에서 N명만 사용 (기본: 전체)")
+    parser.add_argument("--max-reps", type=int, default=None, help="config의 repetitions 값을 무시하고 N회만 반복 (기본: config 값)")
     args = parser.parse_args()
 
     config = load_json(CONFIG_PATH)
@@ -152,11 +155,13 @@ def main() -> None:
     question_types = config["question_types"]
     info_levels = config["info_levels"]
     session_types = config["session_types"]
-    repetitions = config["repetitions"]
+    repetitions = args.max_reps if args.max_reps is not None else config["repetitions"]
 
     personas = personas_data["personas"]
+    if args.max_personas is not None:
+        personas = personas[: args.max_personas]
 
-    results_dir = RESULTS_ROOT / args.model / "raw_responses"
+    results_dir = RESULTS_ROOT / topic / args.model / "raw_responses"
     results_dir.mkdir(parents=True, exist_ok=True)
 
     print(f"페르소나 {len(personas)}명 로딩 중...")
@@ -231,7 +236,7 @@ def main() -> None:
     run_meta = compute_run_meta(model_id, results_dir, total_calls, pricing, start_time, end_time)
     run_meta["failed_calls_this_run"] = failed_this_run
 
-    meta_path = RESULTS_ROOT / args.model / "run_meta.json"
+    meta_path = RESULTS_ROOT / topic / args.model / "run_meta.json"
     with open(meta_path, "w", encoding="utf-8") as f:
         json.dump(run_meta, f, ensure_ascii=False, indent=2)
 
