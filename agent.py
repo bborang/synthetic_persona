@@ -22,7 +22,8 @@ PRICING_USD_PER_1M_TOKENS = {
     # TODO: gpt-5 계열 정확한 가격이 확정되면 아래 0 값을 실제 가격으로 갱신할 것.
     # (reasoning_tokens도 completion_tokens에 포함되어 과금되므로, usage["reasoning_tokens"]로 별도 확인 가능)
     "gpt-5.4": {"input": 0, "output": 0},
-    "gpt-5.6": {"input": 0, "output": 0}
+    "gpt-5.6": {"input": 0, "output": 0},
+    "gpt-5-mini": {"input": 0, "output": 0},
 }
 
 SUPPORTED_MODELS = set(PRICING_USD_PER_1M_TOKENS.keys())
@@ -90,12 +91,15 @@ def _extract_offending_param(error: "openai.BadRequestError", candidates: list[s
     return None
 
 
-def _call_chat_completions(client: OpenAI, model_id: str, messages: list[dict], params: dict) -> tuple[Any, list[str]]:
+def _call_chat_completions(
+    client: OpenAI, model_id: str, messages: list[dict], params: dict, **extra_kwargs: Any
+) -> tuple[Any, list[str]]:
     """gpt-5 계열처럼 max_tokens/temperature 등을 지원하지 않는 모델을 위해,
     400 에러가 나면 문제 파라미터를 하나씩 제거하고 재시도한다.
+    extra_kwargs는 response_format 등 그대로 전달하고 싶은 추가 인자(재시도 대상 아님).
     반환: (API 응답, 실제로 제거된 파라미터 이름 목록)
     """
-    kwargs = {"model": model_id, "messages": messages}
+    kwargs = {"model": model_id, "messages": messages, **extra_kwargs}
     if model_id.startswith("gpt-5"):
         kwargs["max_completion_tokens"] = params["max_tokens"]
     else:

@@ -163,35 +163,56 @@ python scripts/sample_medical_personas.py
   python scripts/run_h3_experiment.py --config experiments/configs/h3_config_spotcheck.json --model gpt56
   python scripts/run_h3_experiment.py --config experiments/configs/h3_config_spotcheck.json --model gpt54
   ```
-- **현재 알려진 문제**: 
 - 실측 결과 (2026-07 기준, 페르소나 1명·정보량 3단계 실행): `gpt-5.6`은 `temperature`를 거부하고(자동 드롭)
   `reasoning_tokens`를 실제로 소비하는 반면, `gpt-5.4`는 `temperature`를 그대로 받아들이고 `reasoning_tokens`가
   0으로 보고됨 — 같은 "gpt-5.x" 계열이라도 내부적으로 다르게 동작할 수 있음을 시사합니다.
+  또한 요청한 모델 ID(`gpt-5.6` 등)가 실제로는 다른 ID(`gpt-5.6-sol` 등)로 라우팅되는 경우가 있어,
+  분석 시 `actual_model` 컬럼(API가 실제로 응답한 모델명)을 함께 확인하는 게 안전합니다.
 
 ## 6. H3 결과 분석 (`scripts/analyze_h3.py`)
 
 `experiments/configs/h3_config.json`의 `topic`을 읽어, `experiments/h3/results/{topic}/` 아래 모든 모델의
-원본 응답을 로드하고 지표를 계산한 뒤 `experiments/h3/analysis/{topic}/`에 CSV/그래프로 저장합니다.
+원본 응답을 로드하고 지표를 계산한 뒤 `experiments/h3/analysis/{topic}/`에 CSV 6종과 그래프(PNG) 최대 6종을 저장합니다.
 
 ```bash
 python scripts/analyze_h3.py
 ```
 
-- **태도 점수(찬성/반대/중립, 1~5점)**는 `gpt-4o-mini`로 판정합니다.
-  - **이전 버전(키워드 카운팅 방식)의 한계**: 응답 텍스트에서 "찬성"/"반대" 등 키워드 개수를 세서 다수결로 판정했는데,
-    "예산 낭비 우려도 있었지만, 그래도 잘한 일이라고 봐"처럼 **반론을 언급한 뒤 결론을 내리는 양보문**에서
-    실제 결론과 무관하게 언급된 반론 키워드("우려") 때문에 반대로 오분류되는 문제가 있었습니다.
-    키워드 매칭은 문장 구조·양보 관계를 전혀 이해하지 못하기 때문에 구조적으로 해결이 불가능했습니다.
-  - **해결**: `gpt-4o-mini`에게 "응답자의 최종 결론을 기준으로 판단하라"고 명시한 프롬프트로 분류하도록 교체했습니다.
-    비용은 응답 1건당 약 $0.00009로 무시할 수 있는 수준이며(실험 생성 자체의 1/50~1/100), 동일 텍스트는 캐시로
-    재사용해 중복 호출도 방지합니다. 실행 중 총 분류 비용이 터미널에 출력됩니다.
+- **태도 점수(찬성/반대/중립/판단불가, 1~5점)**는 `gpt-5-mini`로 판정합니다. `topic`을 프롬프트에 주입해서
+  판정 모델이 어떤 정책을 이야기하는지 알고 판단하게 합니다.
+  - **1세대(키워드 카운팅) 한계**: 키워드 개수로 다수결 판정했는데, "우려도 있었지만 그래도 잘한 일이라고 봐"처럼
+    **반론을 언급한 뒤 결론을 내리는 양보문**에서 언급된 반론 키워드 때문에 실제 결론과 반대로 오분류됐습니다.
+  - **2세대(`gpt-4o-mini` LLM 분류)**: 양보문 문제는 해결했지만, 1/3/5점만 기준을 정의하고 2/4점 기준이
+    없어서 척도가 불명확했습니다 (실제 데이터의 72%가 2·4점에 몰려 있었는데도).
+  - **3세대(현재, `gpt-5-mini`)**: 1~5점 전부의 기준을 명시한 프롬프트로 교체
+    (1=명확한 반대, 2=소극적 반대, 3=중립, 4=조건부 찬성, 5=명확한 찬성).
+    `gpt-5-mini`는 추론 모델이라 `max_tokens` 대신 `max_completion_tokens`를 써야 하고 `temperature` 등
+    일부 파라미터를 거부하는데, 이 처리는 새로 만들지 않고 `agent.py`의 `_call_chat_completions`를
+    그대로 재사용합니다. `response_format=json_object`를 쓰려면 프롬프트에 "json"이라는 단어가 있어야
+    한다는 API 제약도 있어 프롬프트 끝에 한 줄을 추가했습니다.
+  - **"판단불가"(모델이 직접 판정) vs "판정실패"(빈 응답/API 오류/파싱 실패로 우리 쪽이 판정을 못한 경우) 구분**:
+    둘 다 평균 계산에서는 제외되지만 원인이 다르므로 `n_undecidable`/`n_failed`로 각각 따로 집계합니다.
   - **핵심 근거 추출/페르소나 속성 언급 여부**는 여전히 문장·키워드 기반 휴리스틱입니다 (OpenAI 호출 없음).
 - **핵심 근거 유지율**은 `text-embedding-3-small` 임베딩(코사인 유사도 ≥ 0.8)을 사용합니다 — 실행 시 소액의 실제 API 비용이 발생합니다.
+- **페르소나 단위 집계와 집단 비교**: 같은 페르소나의 반복(repetition) 응답은 서로 독립이 아니므로,
+  응답 단위로 바로 t-test/ANOVA를 하면 안 됩니다. 그래서 먼저 페르소나×조건 단위 대표값(평균 등)을 만들고,
+  집단 비교는 그 대표값을 입력으로 계산합니다.
+- **평균과 분포를 항상 함께 확인**: 평균만 보면 "다들 3점 근처"인지 "1점·5점으로 양극화"됐는지 구분할 수
+  없어서, 응답 단위 원본 점수 분포(%)도 별도로 계산합니다.
 - **출력** (`experiments/h3/analysis/{topic}/`, 이 폴더는 `.gitignore`로 제외됨 — 언제든 재생성 가능):
-  - `attitude_scores.csv`: 응답 단위 원본 (페르소나×조건×모델)
+  - `attitude_scores.csv`: 응답 단위 원본 (페르소나×조건×모델), `actual_model`(API가 실제로 응답한 모델명) 포함
+  - `persona_level_scores.csv`: 페르소나×모델×질문유형×정보량×세션유형×턴 단위 대표값
+    (`mean_score`/`std_score`/`min_score`/`max_score`/`mode_direction`/`direction_consistency`,
+    `n_undecidable`/`n_failed`로 판단불가·판정실패 별도 집계, `group`/`occupation`/`age`/`age_bin`/`sex`/`region` 등
+    인구통계 컬럼 포함). **이후 모든 집단 비교의 입력**이 되는 파일입니다.
+  - `group_comparison.csv`: `persona_level_scores.csv`의 `mean_score`를 입력으로, 같은 실험 조건 안에서
+    `group`/`sex`/`age_bin`별 ANOVA(전체 비교) + 모든 쌍 t-test 결과
+  - `score_distribution.csv`: 모델×정보량×집단 조건별 1~5점 비율(%) (판단불가·판정실패 제외)
   - `consistency_metrics.csv`: 모델별 초기 입장 일치율/태도 변화량/근거 유지율/방어성/카이제곱 검정
   - `cross_analysis.csv`: 질문유형×모델, 정보량×모델 교차표 (long format)
-  - `plots/`: 모델별 입장 일치율 bar, 정보량×모델 방어성 line, 모델별 근거 수 box, 모델 크기별 페르소나 정합성 bar (PNG 4개)
+  - `plots/`: 모델별 입장 일치율 bar, 정보량×모델 방어성 line, 모델별 근거 수 box, 모델 크기별 페르소나 정합성 bar,
+    **모델별/집단별 1~5점 분포 100% 스택 막대(`score_distribution_stacked.png`/`score_distribution_by_group.png`,
+    `group` 메타데이터 없으면 후자는 생성 안 함)** (PNG 최대 6개)
 - `experiments/h3/results/{topic}/`가 비어 있으면 "분석할 결과 파일이 없습니다" 안내만 출력하고 종료합니다.
 
 ## `agent.py` — 페르소나 질의 모듈 (재사용 가능)
@@ -215,12 +236,17 @@ result = ask_persona(
 ```
 
 - 모델 가격표는 `agent.py` 상단 `PRICING_USD_PER_1M_TOKENS` dict 하나로 관리합니다 — 가격이 바뀌면 여기만 수정하면 됩니다.
+  현재 `gpt-4o`/`gpt-4o-mini`/`gpt-4.1`/`gpt-5.4`/`gpt-5.6`/`gpt-5-mini`가 등록되어 있습니다.
 - 호출 실패 시 `AgentAPIError`를 발생시킵니다 (인증 오류/한도 초과/네트워크 오류/API 오류를 구분해서 메시지 제공).
 - **gpt-5 계열(추론 모델) 대응**:
   - `model_id`가 `"gpt-5"`로 시작하면 `max_tokens` 대신 `max_completion_tokens`를 자동으로 사용합니다.
   - `temperature`/`top_p`/`frequency_penalty`/`presence_penalty` 중 모델이 거부하는 값이 있으면
     (예: gpt-5.6은 `temperature`가 기본값 1 외에는 400 에러) 해당 파라미터만 제거하고 자동 재시도하며,
     실제로 제거된 파라미터 이름을 `dropped_params`에 남깁니다 (통제 조건이 깨졌는지 보고서에 명시할 때 사용).
+  - 이 재시도 로직은 `_call_chat_completions(client, model_id, messages, params, **extra_kwargs)`라는
+    내부 함수로 분리되어 있어, `agent.py` 밖에서도 재사용할 수 있습니다 (`**extra_kwargs`로
+    `response_format` 등 추가 인자를 그대로 전달 가능). `scripts/analyze_h3.py`의 태도 분류기(`gpt-5-mini`)가
+    이 함수를 그대로 가져다 씁니다 — 같은 파라미터 호환성 문제를 두 곳에서 따로 구현하지 않기 위함입니다.
 
 ## 파일 구성
 
@@ -229,7 +255,7 @@ result = ask_persona(
 | `main.py` | 대화형 챗봇 실행 파일 |
 | `agent.py` | `ask_persona()` — 모델/파라미터를 외부에서 주입 가능한 API 호출 모듈, 비용 누적 로그 포함 |
 | `scripts/run_h3_experiment.py` | H3 실험 배치 실행. `--model`(config에서 동적 검증) `--config` `--max-personas` `--max-reps` |
-| `scripts/analyze_h3.py` | H3 실험 결과 분석 → CSV 3종 + 그래프 4종 (topic은 `h3_config.json` 고정 경로에서 읽음) |
+| `scripts/analyze_h3.py` | H3 실험 결과 분석 → CSV 6종 + 그래프 최대 6종 (topic은 `h3_config.json` 고정 경로에서 읽음) |
 | `scripts/sample_medical_personas.py` | 지역×연령 2×2 집단별 페르소나 샘플링 (seed=42, 의료 직업 우선 포함) |
 | `experiments/configs/h3_config.json` | 본 실험 설정 (topic, personas_file, repetitions, 모델별 파라미터/가격) |
 | `experiments/configs/h3_config_spotcheck.json` | gpt-5 계열 소규모 예비 확인용 설정 (`results_topic`으로 결과를 본 실험과 분리 저장) |
