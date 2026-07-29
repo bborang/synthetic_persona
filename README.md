@@ -101,6 +101,8 @@ MODEL_NAME = "gpt-4o-mini"
 python scripts/run_h3_experiment.py --model gpt4o_mini
 python scripts/run_h3_experiment.py --model gpt4o_mini --max-personas 2 --max-reps 1   # 소규모 테스트용
 python scripts/run_h3_experiment.py --config experiments/configs/h3_config_spotcheck.json --model gpt56
+python scripts/run_h3_experiment.py --config experiments/configs/h3_config_v4.json --model gpt4o --dry-run   # 실행 전 비용부터 확인
+python scripts/run_h3_experiment.py --config experiments/configs/h3_config_v4.json --model gpt4o --concurrency 10
 ```
 
 - **인자**
@@ -109,6 +111,13 @@ python scripts/run_h3_experiment.py --config experiments/configs/h3_config_spotc
   - `--config` (기본값: `experiments/configs/h3_config.json`): 다른 실험 설정 파일을 쓰고 싶을 때 지정 (예: gpt-5 소규모 예비 확인용 `h3_config_spotcheck.json`)
   - `--max-personas N` (기본: 전체): 페르소나 목록에서 앞에서 N명만 사용 — 소규모 테스트용
   - `--max-reps N` (기본: config의 `repetitions`): 반복 횟수를 강제로 N회로 덮어씀 — 소규모 테스트용
+  - `--concurrency N` (기본: 5): 조합(combo)을 동시에 처리할 스레드 수. `ThreadPoolExecutor` 기반이며,
+    한 조합 안의 턴(turn)은 순서대로 실행되고 서로 다른 조합끼리만 병렬로 돕니다. 429(요청 한도 초과)가
+    나면 지수 백오프(2s→4s→8s→...)로 최대 5회 자동 재시도하고, 다른 종류의 오류는 재시도 없이 실패 처리합니다.
+  - `--dry-run`: 실제 API를 호출하지 않고 예상 호출 수와 비용(상한 추정치)만 계산해서 출력하고 종료합니다.
+    `prompt_tokens`는 실제 system prompt+첫 메시지 텍스트 길이로 추정하고(로컬 계산, 무료),
+    `completion_tokens`는 `generation_params`의 `max_tokens`를 그대로 써서 "최악의 경우" 비용 상한을 냅니다
+    (실제 비용은 보통 이보다 낮습니다). 큰 실험 전에 예산을 먼저 확인하는 용도입니다.
 - **설정 파일**
   - `experiments/configs/h3_config.json` (기본): 실행할 `topic`, 페르소나 목록 경로 `personas_file`, `repetitions`,
     모델 라벨별 `model_id`/`generation_params`/`pricing_usd_per_1k_tokens`
@@ -128,7 +137,11 @@ python scripts/run_h3_experiment.py --config experiments/configs/h3_config_spotc
 - **완료 후**: `experiments/h3/results/{results_topic 또는 topic}/{model_label}/run_meta.json`에
   `total_calls`/`completed_calls`/`failed_calls`/토큰 사용량/`estimated_cost_usd`/실행 시간이 저장됩니다.
 - **진행률**: `tqdm`으로 표시됩니다.
-- **비용 로그**: 실행 중 `agent.py`가 API 호출 10회마다 `[호출 N/전체] 누적 비용: $X.XX (입력: $X.XX, 출력: $X.XX)` 를 출력합니다.
+- **비용 로그**: 실행 중 `agent.py`가 API 호출 10회마다 `[호출 N/전체] 누적 비용: $X.XX (입력: $X.XX, 출력: $X.XX)` 를 출력합니다
+  (`--concurrency`로 여러 스레드에서 동시에 호출해도 `agent.py` 내부 락으로 누적 카운트가 안전하게 처리됩니다).
+- **페르소나 로딩 성능**: 개별 조회(`fetch_full_persona()`를 N번 호출)는 매번 parquet 전체를 스캔해서
+  느립니다 (150명 기준 실측 약 16분). `pd.read_parquet(..., filters=[("uuid","in",...)])`로 한 번에
+  배치 조회하도록 바꿔서 같은 150명이 약 8초로 줄었습니다.
 
 > `h3_config.json`의 `pricing_usd_per_1k_tokens`는 참고용 근사치입니다. 실행 전 OpenAI 최신 요금과 맞춰 갱신하세요.
 > gpt-5 계열은 아직 공식 가격이 공개되지 않아 0으로 되어 있어, `estimated_cost_usd`가 실제 비용을 반영하지 못합니다.
@@ -169,6 +182,25 @@ python scripts/sample_medical_personas.py
   또한 요청한 모델 ID(`gpt-5.6` 등)가 실제로는 다른 ID(`gpt-5.6-sol` 등)로 라우팅되는 경우가 있어,
   분석 시 `actual_model` 컬럼(API가 실제로 응답한 모델명)을 함께 확인하는 게 안전합니다.
 
+### v4 코호트 본실험 (`h3_config_v4.json`)
+
+150명(집단당 50명: `A_개원의`/`B_의료직`/`C_일반시민`) 규모의 본실험 설정입니다.
+질문유형 1개(`original`) × 정보량 2단계(`overview`/`with_counterarguments`) × 세션유형 1개(`new_session`) ×
+반복 5회 × 모델 3개(`gpt4o`/`gpt4o_mini`/`gpt41`) = **모델당 1,500회, 총 4,500회**.
+
+- `experiments/configs/h3_config_v4.json`: `results_topic: "medical_school_quota_v4"`로 지정되어 있어
+  `experiments/h3/results/medical_school_quota/`(v3 본실험 경로)와 `medical_school_quota_v4/`가 서로 분리됩니다.
+- `experiments/h3/sampled_personas_v4.json`: 150명의 `persona_id`/`group`
+- `experiments/h3/cohorts/cohort_v4_meta.csv`: 150명의 상세 메타데이터
+  (`persona_id, group_id, name, occupation, age, age_bin, sex, region, region_group, district`).
+  `age_bin`(3단계)과 `region_group`(수도권/비수도권)을 기준으로 균형을 맞춰 샘플링됨 — 자세한 내용은
+  같은 폴더의 `cohort_v4_spec.json` 참고.
+- **실행 전 반드시 `--dry-run`으로 예상 호출 수/비용부터 확인**하세요 (위 5번 항목 참고). 특히 gpt-5 계열이 아닌
+  일반 모델이라 `pricing_usd_per_1k_tokens`가 실가격에 가까워서 추정치를 신뢰할 수 있습니다.
+- **주의**: `results_topic`이 다른 실험(예: v3, spotcheck)과 겹치지 않는지 실행 전에 꼭 확인하세요.
+  기존 결과 폴더를 `rm -rf`로 지우거나 덮어쓰지 않도록, 이 프로젝트에서는 결과 폴더를 광범위하게
+  삭제하는 명령을 사용하지 않는 것을 원칙으로 합니다.
+
 ## 6. H3 결과 분석 (`scripts/analyze_h3.py`)
 
 `experiments/configs/h3_config.json`의 `topic`을 읽어, `experiments/h3/results/{topic}/` 아래 모든 모델의
@@ -197,18 +229,33 @@ python scripts/analyze_h3.py
 - **페르소나 단위 집계와 집단 비교**: 같은 페르소나의 반복(repetition) 응답은 서로 독립이 아니므로,
   응답 단위로 바로 t-test/ANOVA를 하면 안 됩니다. 그래서 먼저 페르소나×조건 단위 대표값(평균 등)을 만들고,
   집단 비교는 그 대표값을 입력으로 계산합니다.
+- **카이제곱 검정도 같은 이유로 응답 단위가 아니라 `persona_id × question_type` 단위로 접어서 계산**합니다.
+  반복(repetition)이 여러 번이면 crosstab에 같은 페르소나의 응답이 여러 행으로 들어가 통계량이
+  반복 횟수에 비례해서 부풀려지고(실측: 정보량 동일한데 10회 반복 시 카이제곱 통계량이 정확히 10배,
+  p-value가 가짜로 작아짐), 접어서 계산하면 원래 값을 정확히 복원합니다.
+- `consistency_metrics.csv`의 `concordance_rate` 계열도 pair 단위 평균이라, 반복이 늘면 pair 수도 늘어납니다.
+  페르소나별 반복 횟수가 균등하면 평균값 자체는 왜곡되지 않지만, `n_pairs`(원본 pair 수)는 독립 관측치 수가
+  아니므로 실제 독립 인원수인 `n_unique_personas`를 같이 남겨서 구분할 수 있게 했습니다.
+- **집단 메타데이터**: config에 `cohort_meta_file`(CSV, `persona_id,group_id,occupation,age,age_bin,sex,region,region_group,...`)이
+  있으면 그 값을 `personas_file`/parquet 대신 우선 사용해서 `persona_level_scores.csv`에 `group_id`/`region_group`을
+  추가로 채웁니다 (없는 구 config는 그대로 parquet 기반으로 동작 — 하위 호환).
 - **평균과 분포를 항상 함께 확인**: 평균만 보면 "다들 3점 근처"인지 "1점·5점으로 양극화"됐는지 구분할 수
   없어서, 응답 단위 원본 점수 분포(%)도 별도로 계산합니다.
 - **출력** (`experiments/h3/analysis/{topic}/`, 이 폴더는 `.gitignore`로 제외됨 — 언제든 재생성 가능):
-  - `attitude_scores.csv`: 응답 단위 원본 (페르소나×조건×모델), `actual_model`(API가 실제로 응답한 모델명) 포함
+  - `attitude_scores.csv`: 응답 단위 원본 (페르소나×조건×모델), `actual_model`(API가 실제로 응답한 모델명) 포함.
+    **저장 후 프로젝트 루트에도 같은 이름으로 한 벌 더 복사**됩니다 (`experiments/h3/results/`가 git 추적
+    대상이 아니라 원본이 사라지면 복구할 수 없었던 적이 있어, 파싱된 결과라도 이중 보관하려는 목적 —
+    루트 사본도 `.gitignore`에 등록되어 있고, topic이 바뀌면 덮어써지니 필요하면 별도로 옮겨두세요).
   - `persona_level_scores.csv`: 페르소나×모델×질문유형×정보량×세션유형×턴 단위 대표값
     (`mean_score`/`std_score`/`min_score`/`max_score`/`mode_direction`/`direction_consistency`,
-    `n_undecidable`/`n_failed`로 판단불가·판정실패 별도 집계, `group`/`occupation`/`age`/`age_bin`/`sex`/`region` 등
+    `n_undecidable`/`n_failed`로 판단불가·판정실패 별도 집계, `group`/`group_id`/`occupation`/`age`/`age_bin`/`sex`/`region`/`region_group` 등
     인구통계 컬럼 포함). **이후 모든 집단 비교의 입력**이 되는 파일입니다.
   - `group_comparison.csv`: `persona_level_scores.csv`의 `mean_score`를 입력으로, 같은 실험 조건 안에서
-    `group`/`sex`/`age_bin`별 ANOVA(전체 비교) + 모든 쌍 t-test 결과
+    `group`/`sex`/`age_bin`/`region_group`별 ANOVA(전체 비교) + 모든 쌍 t-test 결과
   - `score_distribution.csv`: 모델×정보량×집단 조건별 1~5점 비율(%) (판단불가·판정실패 제외)
-  - `consistency_metrics.csv`: 모델별 초기 입장 일치율/태도 변화량/근거 유지율/방어성/카이제곱 검정
+  - `consistency_metrics.csv`: 모델별 초기 입장 일치율/태도 변화량/근거 유지율/방어성/카이제곱 검정.
+    `n_responses`(원본 응답 수) 옆에 `n_independent_persona_question_type`(카이제곱에 실제로 쓰인 독립 관측치 수),
+    `n_pairs`/`n_unique_personas`(pair 원본 수 vs 실제 독립 인원수)를 나란히 표기
   - `cross_analysis.csv`: 질문유형×모델, 정보량×모델 교차표 (long format)
   - `plots/`: 모델별 입장 일치율 bar, 정보량×모델 방어성 line, 모델별 근거 수 box, 모델 크기별 페르소나 정합성 bar,
     **모델별/집단별 1~5점 분포 100% 스택 막대(`score_distribution_stacked.png`/`score_distribution_by_group.png`,
@@ -254,18 +301,23 @@ result = ask_persona(
 | --- | --- |
 | `main.py` | 대화형 챗봇 실행 파일 |
 | `agent.py` | `ask_persona()` — 모델/파라미터를 외부에서 주입 가능한 API 호출 모듈, 비용 누적 로그 포함 |
-| `scripts/run_h3_experiment.py` | H3 실험 배치 실행. `--model`(config에서 동적 검증) `--config` `--max-personas` `--max-reps` |
+| `scripts/run_h3_experiment.py` | H3 실험 배치 실행. `--model` `--config` `--max-personas` `--max-reps` `--concurrency` `--dry-run` |
 | `scripts/analyze_h3.py` | H3 실험 결과 분석 → CSV 6종 + 그래프 최대 6종 (topic은 `h3_config.json` 고정 경로에서 읽음) |
 | `scripts/sample_medical_personas.py` | 지역×연령 2×2 집단별 페르소나 샘플링 (seed=42, 의료 직업 우선 포함) |
-| `experiments/configs/h3_config.json` | 본 실험 설정 (topic, personas_file, repetitions, 모델별 파라미터/가격) |
+| `experiments/configs/h3_config.json` | 본 실험(v3) 설정 (topic, personas_file, repetitions, 모델별 파라미터/가격) |
 | `experiments/configs/h3_config_spotcheck.json` | gpt-5 계열 소규모 예비 확인용 설정 (`results_topic`으로 결과를 본 실험과 분리 저장) |
+| `experiments/configs/h3_config_v4.json` | v4 코호트(150명, 3집단×50) 본실험 설정. `cohort_meta_file` 필드로 인구통계 CSV 연결, `results_topic: medical_school_quota_v4` |
 | `experiments/configs/h3_questions.json` | 주제별 질문 3종(원본/다른 표현/반박형) — 청년 월세 지원, DDP 재개발, 고령자 AI 돌봄, 의대 정원 확대 |
 | `experiments/configs/h3_stimuli.json` | 주제별 자극문 3단계(개요/상세/반론 포함) — 위와 동일한 4개 주제 |
 | `experiments/h3/sampled_personas.json` | 기존 실험(청년 월세 지원 등)용 페르소나 uuid 목록 |
 | `experiments/h3/sampled_personas_medical.json` | 의대 정원 확대 실험용 페르소나 목록 (지역×연령 그룹 라벨 포함) |
 | `experiments/h3/sampled_personas_spotcheck.json` | gpt-5 소규모 예비 확인용 페르소나 1명 (medical 샘플 중 1명 추출) |
-| `experiments/h3/results/` | 실행 결과 원본. `{topic}/{model_label}/...` 구조 (Git 제외, 재생성 가능) |
+| `experiments/h3/sampled_personas_v4.json` | v4 코호트 150명의 `persona_id`/`group` |
+| `experiments/h3/cohorts/cohort_v4_meta.csv` | v4 코호트 150명 상세 메타데이터 (group_id/occupation/age/age_bin/sex/region/region_group/district) |
+| `experiments/h3/cohorts/cohort_v4_spec.json` | v4 코호트 샘플링 방법/시드/집단별 정의 기록 (참고용, 코드에서 읽지 않음) |
+| `experiments/h3/results/` | 실행 결과 원본. `{results_topic 또는 topic}/{model_label}/...` 구조 (Git 제외, 재생성 가능) |
 | `experiments/h3/analysis/` | 분석 결과 CSV/그래프. `{topic}/...` 구조 (Git 제외, 재생성 가능) |
+| `attitude_scores.csv` (프로젝트 루트) | `analyze_h3.py` 실행 시 자동 생성되는 백업 사본 (Git 제외, topic 바뀌면 덮어써짐) |
 | `requirements.txt` | 필요 패키지 목록 |
 | `.env.example` | 환경변수 예시 (실제 키는 `.env`에 입력, `.env`는 Git에 포함되지 않음) |
 | `ko_KR.parquet` | 페르소나 데이터 (약 100만 행). **Git에 포함되지 않음** — 별도로 전달받아 직접 추가 필요 |

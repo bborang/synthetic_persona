@@ -1,0 +1,56 @@
+{
+  "experiment_id": "H3_v4",
+  "topic": "medical_school_quota",
+  "results_topic": "medical_school_quota_v4",
+  "personas_file": "experiments/h3/sampled_personas_v4.json",
+  "cohort_meta_file": "experiments/h3/cohorts/cohort_v4_meta.csv",
+  "repetitions": 5,
+  "question_types": ["original"],
+  "info_levels": ["overview", "with_counterarguments"],
+  "session_types": ["new_session"],
+  "_pricing_note": "아래 pricing_usd_per_1k_tokens 값은 참고용 근사치입니다. 실행 전 OpenAI 공식 요금 페이지에서 최신 가격을 확인하고 업데이트하세요.",
+  "models": {
+    "gpt4o": {
+      "model_id": "gpt-4o",
+      "generation_params": {
+        "temperature": 0.7,
+        "top_p": 1.0,
+        "max_tokens": 1024,
+        "frequency_penalty": 0,
+        "presence_penalty": 0
+      },
+      "pricing_usd_per_1k_tokens": {
+        "prompt": 0.0025,
+        "completion": 0.01
+      }
+    },
+    "gpt4o_mini": {
+      "model_id": "gpt-4o-mini",
+      "generation_params": {
+        "temperature": 0.7,
+        "top_p": 1.0,
+        "max_tokens": 1024,
+        "frequency_penalty": 0,
+        "presence_penalty": 0
+      },
+      "pricing_usd_per_1k_tokens": {
+        "prompt": 0.00015,
+        "completion": 0.0006
+      }
+    },
+    "gpt41": {
+      "model_id": "gpt-4.1",
+      "generation_params": {
+        "temperature": 0.7,
+        "top_p": 1.0,
+        "max_tokens": 1024,
+        "frequency_penalty": 0,
+        "presence_penalty": 0
+      },
+      "pricing_usd_per_1k_tokens": {
+        "prompt": 0.002,
+        "completion": 0.008
+      }
+    }
+  }
+}

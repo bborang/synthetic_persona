@@ -1,0 +1,754 @@
+{
+  "personas": [
+    {
+      "persona_id": "3842149a2b44429897688e0ec82b2a57",
+      "group": "A_개원의",
+      "note": "채정은, 28세 여자, 일반 의사"
+    },
+    {
+      "persona_id": "2d43eb82177e4f9987dbde443f07da17",
+      "group": "A_개원의",
+      "note": "최보라, 31세 여자, 내과 전문 의사"
+    },
+    {
+      "persona_id": "08261dea8cec46f3b97c05189bba7af1",
+      "group": "A_개원의",
+      "note": "박한결, 35세 여자, 내과 전문 의사"
+    },
+    {
+      "persona_id": "b5d63b8764b44c1ebe79629a81fbb062",
+      "group": "A_개원의",
+      "note": "조슬비, 35세 여자, 일반 의사"
+    },
+    {
+      "persona_id": "38258be5b9804135aef9e3db064770d7",
+      "group": "A_개원의",
+      "note": "박유리, 37세 여자, 안과 및 이비인후과 전문 의사"
+    },
+    {
+      "persona_id": "2d930dbf948e4fb8b2d073b1f7504e04",
+      "group": "A_개원의",
+      "note": "박동호, 37세 남자, 내과 전문 의사"
+    },
+    {
+      "persona_id": "29bb271988c241f4b73a837074ccf684",
+      "group": "A_개원의",
+      "note": "구다예, 37세 여자, 안과 및 이비인후과 전문 의사"
+    },
+    {
+      "persona_id": "7892a303c85b45e0866632848e0c3d7c",
+      "group": "A_개원의",
+      "note": "김선영, 38세 여자, 내과 전문 의사"
+    },
+    {
+      "persona_id": "f9d0257de2224c479852734d60a09dd3",
+      "group": "A_개원의",
+      "note": "박건우, 39세 남자, 일반 의사"
+    },
+    {
+      "persona_id": "4a7359feb8b54400a2195f71ed7151f9",
+      "group": "A_개원의",
+      "note": "최주리, 30세 여자, 안과 및 이비인후과 전문 의사"
+    },
+    {
+      "persona_id": "8e4ec87ca03746c6bf2715fe38052b6d",
+      "group": "A_개원의",
+      "note": "송정훈, 31세 남자, 외과 전문 의사"
+    },
+    {
+      "persona_id": "a5447ea43e2144cf8f099df664798aeb",
+      "group": "A_개원의",
+      "note": "유온유, 32세 남자, 정신건강의학과 및 신경과 전문 의사"
+    },
+    {
+      "persona_id": "fe067288432d4000b1e682f5ff37e81c",
+      "group": "A_개원의",
+      "note": "김지현, 32세 여자, 일반 의사"
+    },
+    {
+      "persona_id": "6a6c2e2ab0f14a068966aeff2cc9b117",
+      "group": "A_개원의",
+      "note": "김은하, 35세 여자, 일반 의사"
+    },
+    {
+      "persona_id": "e4e3033dc6c743dfb440b945ee7e67da",
+      "group": "A_개원의",
+      "note": "장미해, 36세 여자, 일반 의사"
+    },
+    {
+      "persona_id": "090e7e5338ac4010adb47d4db9635b0d",
+      "group": "A_개원의",
+      "note": "김영진, 38세 남자, 일반 의사"
+    },
+    {
+      "persona_id": "f9dc961efc7047c9a9ec6b7ae9a03ade",
+      "group": "A_개원의",
+      "note": "한미진, 39세 여자, 내과 전문 의사"
+    },
+    {
+      "persona_id": "b7ae78d8c65c4b7dad7357c9fb7cb316",
+      "group": "A_개원의",
+      "note": "유보경, 39세 여자, 내과 전문 의사"
+    },
+    {
+      "persona_id": "d19bd6f041fc4872b539de33efadf4c7",
+      "group": "A_개원의",
+      "note": "김현정, 40세 여자, 내과 전문 의사"
+    },
+    {
+      "persona_id": "de9648c9d39940a6a8ff0a9f6a7eecb1",
+      "group": "A_개원의",
+      "note": "김경철, 40세 남자, 내과 전문 의사"
+    },
+    {
+      "persona_id": "5443501c8737478d9d6e1102f5c1ce09",
+      "group": "A_개원의",
+      "note": "조미영, 44세 여자, 일반 의사"
+    },
+    {
+      "persona_id": "83cb880debe44bc6954dffd821df0e90",
+      "group": "A_개원의",
+      "note": "신진원, 46세 남자, 소아청소년과 전문 의사"
+    },
+    {
+      "persona_id": "ffd3c85ca66a44aa99928ecfe22d939c",
+      "group": "A_개원의",
+      "note": "설현철, 47세 남자, 안과 및 이비인후과 전문 의사"
+    },
+    {
+      "persona_id": "ffcaa853f15546d09d96f48a1d88c0aa",
+      "group": "A_개원의",
+      "note": "하정명, 55세 남자, 일반 의사"
+    },
+    {
+      "persona_id": "6f03e45e8938450885933b330c3cdac2",
+      "group": "A_개원의",
+      "note": "김혜윤, 56세 여자, 내과 전문 의사"
+    },
+    {
+      "persona_id": "224a555dd4db447986a97b682c453f7c",
+      "group": "A_개원의",
+      "note": "김명숙, 56세 여자, 내과 전문 의사"
+    },
+    {
+      "persona_id": "9eeb3429a0804f88b560076ab45641ac",
+      "group": "A_개원의",
+      "note": "김혜순, 40세 여자, 일반 의사"
+    },
+    {
+      "persona_id": "734a3c8b89494d4185d7dd970a3e5abf",
+      "group": "A_개원의",
+      "note": "김문경, 43세 여자, 안과 및 이비인후과 전문 의사"
+    },
+    {
+      "persona_id": "4683d92cbd0f4a1e89f655040a34f2e9",
+      "group": "A_개원의",
+      "note": "강정아, 48세 여자, 내과 전문 의사"
+    },
+    {
+      "persona_id": "e101acb5ba164291b6a0045698544606",
+      "group": "A_개원의",
+      "note": "김상수, 53세 남자, 일반 의사"
+    },
+    {
+      "persona_id": "2fadfa3fcb3c4bcdaf583941c20b750b",
+      "group": "A_개원의",
+      "note": "유정석, 53세 남자, 내과 전문 의사"
+    },
+    {
+      "persona_id": "19d3af4ffa4d4dc59ba9236cee2a18f0",
+      "group": "A_개원의",
+      "note": "황현숙, 58세 여자, 일반 의사"
+    },
+    {
+      "persona_id": "b770dfff78024e1e92850a68d8c6ef78",
+      "group": "A_개원의",
+      "note": "이신숙, 58세 여자, 내과 전문 의사"
+    },
+    {
+      "persona_id": "9f8cf58e5bab48dab030d740a3ee176b",
+      "group": "A_개원의",
+      "note": "양향심, 58세 여자, 내과 전문 의사"
+    },
+    {
+      "persona_id": "497b6d20303847f58aa9836dc42927cf",
+      "group": "A_개원의",
+      "note": "소영희, 60세 여자, 내과 전문 의사"
+    },
+    {
+      "persona_id": "1a91581fdf0946ab85b0fdc5d04665f4",
+      "group": "A_개원의",
+      "note": "이태옥, 60세 남자, 내과 전문 의사"
+    },
+    {
+      "persona_id": "907c60bd8e8840bf9c768bc5a5767c20",
+      "group": "A_개원의",
+      "note": "한병근, 61세 남자, 일반 의사"
+    },
+    {
+      "persona_id": "4cda057374ce4429bb18797e10114ab9",
+      "group": "A_개원의",
+      "note": "최영복, 63세 남자, 내과 전문 의사"
+    },
+    {
+      "persona_id": "91307bc71fab4177aac98dd308548111",
+      "group": "A_개원의",
+      "note": "구현숙, 66세 여자, 그 외 전문 의사"
+    },
+    {
+      "persona_id": "d3f0ddb5e1714be18784648fb1b4994a",
+      "group": "A_개원의",
+      "note": "김재금, 67세 여자, 내과 전문 의사"
+    },
+    {
+      "persona_id": "e9a0054dcb444e469e9045a2c82cf665",
+      "group": "A_개원의",
+      "note": "오명식, 72세 남자, 일반 의사"
+    },
+    {
+      "persona_id": "1128d5cf8c474406a083c434c4e32f38",
+      "group": "A_개원의",
+      "note": "이안수, 79세 남자, 외과 전문 의사"
+    },
+    {
+      "persona_id": "c4a60e67e4f046ab9347fc1b966e6d16",
+      "group": "A_개원의",
+      "note": "이동열, 60세 남자, 내과 전문 의사"
+    },
+    {
+      "persona_id": "561c086114ba4762b356122e057c8090",
+      "group": "A_개원의",
+      "note": "최경희, 60세 여자, 내과 전문 의사"
+    },
+    {
+      "persona_id": "a4e90b834d6d4e319b6036b36962058f",
+      "group": "A_개원의",
+      "note": "유종근, 63세 남자, 안과 및 이비인후과 전문 의사"
+    },
+    {
+      "persona_id": "46598ae04e704235a3b9c61642ed0a8f",
+      "group": "A_개원의",
+      "note": "강명순, 63세 여자, 일반 의사"
+    },
+    {
+      "persona_id": "9fd8cda706fd40b0804be045832926c2",
+      "group": "A_개원의",
+      "note": "이영옥, 67세 여자, 내과 전문 의사"
+    },
+    {
+      "persona_id": "8545be8224a34456b55fdf49a17d9784",
+      "group": "A_개원의",
+      "note": "하만석, 70세 남자, 일반 의사"
+    },
+    {
+      "persona_id": "1f8c36bd3ac24e95802feda563454a3d",
+      "group": "A_개원의",
+      "note": "박정숙, 72세 여자, 일반 의사"
+    },
+    {
+      "persona_id": "4e6225b06e834649b1c754c60cbd8716",
+      "group": "A_개원의",
+      "note": "남향순, 78세 여자, 일반 의사"
+    },
+    {
+      "persona_id": "6b9e27f3ceeb42ff99e862640c574ef7",
+      "group": "B_의료직",
+      "note": "고호원, 26세 여자, 일반 간호사"
+    },
+    {
+      "persona_id": "33ff1a4f880744c89511a641793e355c",
+      "group": "B_의료직",
+      "note": "유시윤, 29세 여자, 전문 간호사"
+    },
+    {
+      "persona_id": "15cf2537c05a47c0ab334a7ebf4eb420",
+      "group": "B_의료직",
+      "note": "기수연, 29세 여자, 약사"
+    },
+    {
+      "persona_id": "7e1c5a6bfaa142debc05d27cba92a089",
+      "group": "B_의료직",
+      "note": "김나윤, 29세 여자, 약사"
+    },
+    {
+      "persona_id": "6444e14a25394b66abe40e869df8ea6c",
+      "group": "B_의료직",
+      "note": "김지현, 30세 여자, 간호조무사"
+    },
+    {
+      "persona_id": "c36747d49b5346ce9a829ff8c14755f4",
+      "group": "B_의료직",
+      "note": "여주리, 32세 여자, 일반 간호사"
+    },
+    {
+      "persona_id": "ac3fe96b459e4ed1822683b94cfc94c0",
+      "group": "B_의료직",
+      "note": "주예진, 33세 여자, 일반 간호사"
+    },
+    {
+      "persona_id": "1db3bcd5ba8644dc9a926790da9d0c97",
+      "group": "B_의료직",
+      "note": "김예진, 34세 여자, 일반 간호사"
+    },
+    {
+      "persona_id": "f36981f8c8ca4969b7c6458354a93bb5",
+      "group": "B_의료직",
+      "note": "이민정, 34세 여자, 전문 간호사"
+    },
+    {
+      "persona_id": "c40469d468e441a5827838753b1e2cd9",
+      "group": "B_의료직",
+      "note": "김영웅, 19세 남자, 간호조무사"
+    },
+    {
+      "persona_id": "eb2f92dcd0564d3a9a28c699513b2225",
+      "group": "B_의료직",
+      "note": "오예빈, 23세 여자, 일반 간호사"
+    },
+    {
+      "persona_id": "0f7cb84206fe494898992ac27f7df74d",
+      "group": "B_의료직",
+      "note": "김태란, 25세 여자, 일반 간호사"
+    },
+    {
+      "persona_id": "2c6577beedf74bbaae2dd51852343e1e",
+      "group": "B_의료직",
+      "note": "이수연, 26세 여자, 간호조무사"
+    },
+    {
+      "persona_id": "5205ea056ac940cca10292a795cc3480",
+      "group": "B_의료직",
+      "note": "정은혜, 27세 여자, 전문 간호사"
+    },
+    {
+      "persona_id": "b3154c768b9c4bfba008d6d457a08c1e",
+      "group": "B_의료직",
+      "note": "권지연, 31세 여자, 전문 간호사"
+    },
+    {
+      "persona_id": "2e6fa909049640f59b8b76a08e442a93",
+      "group": "B_의료직",
+      "note": "최인혜, 31세 여자, 전문 간호사"
+    },
+    {
+      "persona_id": "fc92eb605f324320b3c8dea4e9fddadc",
+      "group": "B_의료직",
+      "note": "김선영, 35세 여자, 전문 간호사"
+    },
+    {
+      "persona_id": "67c5def1244e4fc8b02874bcb3b4b3d8",
+      "group": "B_의료직",
+      "note": "김영아, 39세 여자, 한약사"
+    },
+    {
+      "persona_id": "ca2be92ad5424d299475f73fcebfee20",
+      "group": "B_의료직",
+      "note": "김미애, 41세 여자, 전문 간호사"
+    },
+    {
+      "persona_id": "5dd170c828c04d7fb457b5a8658ca4e5",
+      "group": "B_의료직",
+      "note": "김은하, 42세 여자, 일반 간호사"
+    },
+    {
+      "persona_id": "a6f049374e7040149827defa4776cee7",
+      "group": "B_의료직",
+      "note": "조혜정, 43세 여자, 약사"
+    },
+    {
+      "persona_id": "8749af1bf6a14f2bbc9fafddee281367",
+      "group": "B_의료직",
+      "note": "한보경, 46세 여자, 약사"
+    },
+    {
+      "persona_id": "dbd82859372f446b9f53ec919e6d9a76",
+      "group": "B_의료직",
+      "note": "최선화, 46세 여자, 일반 간호사"
+    },
+    {
+      "persona_id": "0716116f9d40493a9f74a25fc6035d03",
+      "group": "B_의료직",
+      "note": "강정순, 47세 여자, 물리치료사"
+    },
+    {
+      "persona_id": "c4c363e88d0344c2bf2196fb75b92c44",
+      "group": "B_의료직",
+      "note": "윤미선, 50세 여자, 일반 간호사"
+    },
+    {
+      "persona_id": "ccae9e0ed6f4472ca9d9233af55d3210",
+      "group": "B_의료직",
+      "note": "이도현, 53세 여자, 간호조무사"
+    },
+    {
+      "persona_id": "16c5d6adc69d448c827abe9c162d1d28",
+      "group": "B_의료직",
+      "note": "김지은, 41세 여자, 방사선사"
+    },
+    {
+      "persona_id": "99f5851aee59460eb801d6618f40e5d6",
+      "group": "B_의료직",
+      "note": "정혜미, 43세 여자, 전문 간호사"
+    },
+    {
+      "persona_id": "7df18951f49048ca81c0ff4f9544efb3",
+      "group": "B_의료직",
+      "note": "백주영, 44세 여자, 간호조무사"
+    },
+    {
+      "persona_id": "91491b32f72b49f9a1efb428a388d7a4",
+      "group": "B_의료직",
+      "note": "전주현, 44세 여자, 약사"
+    },
+    {
+      "persona_id": "96460ec34791428bac82724d4e1ac404",
+      "group": "B_의료직",
+      "note": "김영주, 46세 여자, 일반 간호사"
+    },
+    {
+      "persona_id": "5f92950025b34aadb89ac17b3c28bf86",
+      "group": "B_의료직",
+      "note": "박윤미, 51세 여자, 물리치료사"
+    },
+    {
+      "persona_id": "88e8cdd583564221bd07fec8cc948f76",
+      "group": "B_의료직",
+      "note": "박영남, 57세 여자, 전문 간호사"
+    },
+    {
+      "persona_id": "7fa3fb43b0a74dd685461e6d9fb29fd3",
+      "group": "B_의료직",
+      "note": "김복금, 57세 여자, 간호조무사"
+    },
+    {
+      "persona_id": "fd63857cf41b446a94d1341258ddde98",
+      "group": "B_의료직",
+      "note": "목보영, 60세 여자, 일반 간호사"
+    },
+    {
+      "persona_id": "6ba212b4f9f94f668114bab70284b25a",
+      "group": "B_의료직",
+      "note": "이재영, 61세 여자, 간호조무사"
+    },
+    {
+      "persona_id": "f1c87c924f60448c984083f6b8fb3c57",
+      "group": "B_의료직",
+      "note": "주순주, 62세 여자, 일반 간호사"
+    },
+    {
+      "persona_id": "444ed7745dbf45ca9db34ef780e5f18c",
+      "group": "B_의료직",
+      "note": "신연중, 62세 여자, 간호조무사"
+    },
+    {
+      "persona_id": "ada348a2ce7048509eaed5b419d9517d",
+      "group": "B_의료직",
+      "note": "조학순, 67세 여자, 간호조무사"
+    },
+    {
+      "persona_id": "d8623b6ce14f450b980e5582e0e01c6c",
+      "group": "B_의료직",
+      "note": "김옥자, 67세 여자, 간호조무사"
+    },
+    {
+      "persona_id": "81c3ef4d843444d084c14689e010ebf3",
+      "group": "B_의료직",
+      "note": "심미옥, 68세 여자, 간호조무사"
+    },
+    {
+      "persona_id": "f69510206bc146d799340923ef3a07a3",
+      "group": "B_의료직",
+      "note": "금규명, 71세 남자, 약사"
+    },
+    {
+      "persona_id": "0d44de02a6ff4072aa29d007cb2fcdd7",
+      "group": "B_의료직",
+      "note": "이경례, 62세 여자, 간호조무사"
+    },
+    {
+      "persona_id": "f575f3f70a3243129d3c341141be4a42",
+      "group": "B_의료직",
+      "note": "배영희, 62세 여자, 간호조무사"
+    },
+    {
+      "persona_id": "0be23c95b0864c7ea9ea08ee4bc158b6",
+      "group": "B_의료직",
+      "note": "한기연, 63세 여자, 일반 간호사"
+    },
+    {
+      "persona_id": "d23b3270c9a445d39a63b17016b34c3d",
+      "group": "B_의료직",
+      "note": "김영열, 67세 여자, 간호조무사"
+    },
+    {
+      "persona_id": "d8e40b44e73945a5b919a0e95b44b902",
+      "group": "B_의료직",
+      "note": "이혜숙, 68세 여자, 간호조무사"
+    },
+    {
+      "persona_id": "033f74fbadee400b8c090a80d5a43140",
+      "group": "B_의료직",
+      "note": "이점식, 68세 여자, 간호조무사"
+    },
+    {
+      "persona_id": "3aa8a9f2b5194e4290b7c6194c66eafe",
+      "group": "B_의료직",
+      "note": "김옥순, 72세 여자, 간호조무사"
+    },
+    {
+      "persona_id": "359e1c0dd2b44bad9bc4bc92611f731a",
+      "group": "B_의료직",
+      "note": "오갑숙, 73세 여자, 약사"
+    },
+    {
+      "persona_id": "a6a087af2e7143da8767dd2b24af3321",
+      "group": "C_일반시민",
+      "note": "권성재, 19세 남자, 무직"
+    },
+    {
+      "persona_id": "2979de00ffc2463ba66397c68a79ba74",
+      "group": "C_일반시민",
+      "note": "송서연, 21세 여자, 무직"
+    },
+    {
+      "persona_id": "df0afe643a13416aa8bcf46be5ee68c7",
+      "group": "C_일반시민",
+      "note": "박아름, 25세 여자, 국가행정 사무원"
+    },
+    {
+      "persona_id": "babe60afa5cf4b36a516ac22a49ebfdc",
+      "group": "C_일반시민",
+      "note": "윤예인, 29세 여자, 무직"
+    },
+    {
+      "persona_id": "1dfdbacb392d41efabc4516218a79939",
+      "group": "C_일반시민",
+      "note": "이소연, 30세 여자, 관광버스 운전원"
+    },
+    {
+      "persona_id": "8c70fd2d4e8943df9af1e775be70b2d1",
+      "group": "C_일반시민",
+      "note": "정선우, 31세 여자, 경리 사무원"
+    },
+    {
+      "persona_id": "bc3cb8c9770e4d2f9dbcbfc8ff004163",
+      "group": "C_일반시민",
+      "note": "박지운, 32세 남자, 무직"
+    },
+    {
+      "persona_id": "3bb0bc2b96574ec78d26cb0e284b9c86",
+      "group": "C_일반시민",
+      "note": "최정우, 34세 남자, 건축자재 영업원"
+    },
+    {
+      "persona_id": "860f42b1bbeb47109fa3bdbfaa25a88a",
+      "group": "C_일반시민",
+      "note": "박윤주, 38세 여자, 그 외 판매 및 고객 서비스 관리자"
+    },
+    {
+      "persona_id": "0eeb8b9e21b04ae69c65698c2d32ebfd",
+      "group": "C_일반시민",
+      "note": "손은성, 19세 남자, 무직"
+    },
+    {
+      "persona_id": "bcae9d0f19d34add95c74095f749775c",
+      "group": "C_일반시민",
+      "note": "김민기, 20세 남자, 산업기계공학 기술자 및 연구원"
+    },
+    {
+      "persona_id": "d8eaae7548dd45658fb35e2c3dfc4b92",
+      "group": "C_일반시민",
+      "note": "설태영, 21세 남자, 무직"
+    },
+    {
+      "persona_id": "6dd8b865f14f4b7881ecb3ae1a6eaa08",
+      "group": "C_일반시민",
+      "note": "손가은, 23세 여자, 그 외 시각 디자이너"
+    },
+    {
+      "persona_id": "5b14be6bb24a4d69b78c4e95f93255af",
+      "group": "C_일반시민",
+      "note": "정승진, 26세 남자, 그 외 법률 관련 사무원"
+    },
+    {
+      "persona_id": "019ef7ce08cc4735a400f00c3946cf51",
+      "group": "C_일반시민",
+      "note": "김영원, 30세 여자, 무직"
+    },
+    {
+      "persona_id": "7c45b5585c364c519334c19bb4c1db7c",
+      "group": "C_일반시민",
+      "note": "김한결, 33세 남자, 경영 기획 사무원"
+    },
+    {
+      "persona_id": "60c50dd11fba4c49b88d436aff3b207b",
+      "group": "C_일반시민",
+      "note": "오지선, 33세 여자, 전화 상담원"
+    },
+    {
+      "persona_id": "9fbc283a181b4ba29141d6e12e7713c9",
+      "group": "C_일반시민",
+      "note": "백다운, 35세 남자, 네트워크 프로그래머"
+    },
+    {
+      "persona_id": "1674e297be7f4511969750fb9d529d5c",
+      "group": "C_일반시민",
+      "note": "이영지, 41세 여자, 주방 보조원"
+    },
+    {
+      "persona_id": "ee416fc5016a4b00b05481c5c942a9fe",
+      "group": "C_일반시민",
+      "note": "김정아, 48세 여자, 방문 판매원"
+    },
+    {
+      "persona_id": "c54cc43886df4254b37475251e9080c0",
+      "group": "C_일반시민",
+      "note": "이유나, 48세 여자, 경호원"
+    },
+    {
+      "persona_id": "aa97e494aef04a3e8d9bb68bc87e4014",
+      "group": "C_일반시민",
+      "note": "홍선화, 49세 여자, 무직"
+    },
+    {
+      "persona_id": "97547e03a5ec4ac29625864f883ef9d4",
+      "group": "C_일반시민",
+      "note": "권문정, 51세 여자, 사무 보조원"
+    },
+    {
+      "persona_id": "eed3d3ef0ae44aa08f7067ea9f33d109",
+      "group": "C_일반시민",
+      "note": "오희성, 53세 남자, 지게차 운전원"
+    },
+    {
+      "persona_id": "d9ce653835384e98b98bff98f25ebd17",
+      "group": "C_일반시민",
+      "note": "정은주, 53세 여자, 무직"
+    },
+    {
+      "persona_id": "06b2a4cc290547ecba025b452d1b601c",
+      "group": "C_일반시민",
+      "note": "신동환, 59세 남자, 생산관리 사무원"
+    },
+    {
+      "persona_id": "93ebbbded0024216a7c336fa95ee8378",
+      "group": "C_일반시민",
+      "note": "김승민, 44세 남자, 철도운송 사무원"
+    },
+    {
+      "persona_id": "4664410391514781afba34f4cd834066",
+      "group": "C_일반시민",
+      "note": "김상훈, 45세 남자, 관세행정 사무원"
+    },
+    {
+      "persona_id": "4b8da73d0cb14e6792158ab096e42aa6",
+      "group": "C_일반시민",
+      "note": "안은진, 46세 여자, 사무 보조원"
+    },
+    {
+      "persona_id": "08a917d0a67a4741ab877965852d845d",
+      "group": "C_일반시민",
+      "note": "정상일, 48세 남자, 무직"
+    },
+    {
+      "persona_id": "413c4f323d714e6ba5fa1c02d515bfb9",
+      "group": "C_일반시민",
+      "note": "심강미, 53세 여자, 가구 도장기 조작원"
+    },
+    {
+      "persona_id": "22e0cbb741d94871b5703d81bfb42fb3",
+      "group": "C_일반시민",
+      "note": "신경택, 55세 남자, 무직"
+    },
+    {
+      "persona_id": "e7c6f5929c904210a554df31cb950f00",
+      "group": "C_일반시민",
+      "note": "이정아, 58세 여자, 한식 조리사"
+    },
+    {
+      "persona_id": "592e0eb2d9514c4e9f62199d57559bc6",
+      "group": "C_일반시민",
+      "note": "박미, 59세 여자, 무직"
+    },
+    {
+      "persona_id": "0a3318879c2640f293fbd7bb8ff6eda9",
+      "group": "C_일반시민",
+      "note": "박순금, 60세 여자, 금속 세척기 조작원"
+    },
+    {
+      "persona_id": "e971c648f00f4ce38579dfa5cc4de6fa",
+      "group": "C_일반시민",
+      "note": "유동원, 60세 남자, 무직"
+    },
+    {
+      "persona_id": "be6a4ac68b9849ed9f5fe6f935dd38db",
+      "group": "C_일반시민",
+      "note": "엄완기, 69세 남자, 무직"
+    },
+    {
+      "persona_id": "22b9d5c064a547d0a1c0de498f9f1a10",
+      "group": "C_일반시민",
+      "note": "박혜희, 70세 여자, 무직"
+    },
+    {
+      "persona_id": "e6889b6a4677475da8c3a373a8d5b932",
+      "group": "C_일반시민",
+      "note": "박춘자, 88세 여자, 무직"
+    },
+    {
+      "persona_id": "3008cb2af3f04ad7982ac128d8575ac3",
+      "group": "C_일반시민",
+      "note": "김경애, 89세 여자, 무직"
+    },
+    {
+      "persona_id": "7927a589950f461fbc7114bd248cbe13",
+      "group": "C_일반시민",
+      "note": "윤남출, 94세 여자, 무직"
+    },
+    {
+      "persona_id": "617d175989114dcda50f9dc58fbf18cb",
+      "group": "C_일반시민",
+      "note": "손영순, 96세 여자, 무직"
+    },
+    {
+      "persona_id": "1e7f54c820304111bc7d2d93fd0c1a0d",
+      "group": "C_일반시민",
+      "note": "지재숙, 60세 여자, 무직"
+    },
+    {
+      "persona_id": "6185f42f3b724fad9b43ebfbaf2cfc98",
+      "group": "C_일반시민",
+      "note": "유미희, 62세 여자, 건물 청소원"
+    },
+    {
+      "persona_id": "feeaae2f586d4366bd1b5c35137af794",
+      "group": "C_일반시민",
+      "note": "박상숙, 64세 여자, 무직"
+    },
+    {
+      "persona_id": "45febd2f739d43c7ae0b3d86a0173337",
+      "group": "C_일반시민",
+      "note": "강회자, 65세 여자, 노점 및 이동 판매원"
+    },
+    {
+      "persona_id": "df38b8fd10ac40dbb84192a5aa47c094",
+      "group": "C_일반시민",
+      "note": "최영숙, 70세 여자, 무직"
+    },
+    {
+      "persona_id": "252c4a5612cc4f4b80a7184004219403",
+      "group": "C_일반시민",
+      "note": "이점남, 78세 여자, 무직"
+    },
+    {
+      "persona_id": "6f8ca2c03f264b1b92faedc8fd5b629b",
+      "group": "C_일반시민",
+      "note": "박주현, 80세 남자, 무직"
+    },
+    {
+      "persona_id": "e72fc65f27e34626a523f655ee0517da",
+      "group": "C_일반시민",
+      "note": "김희분, 84세 여자, 매장 정리원"
+    }
+  ]
+}

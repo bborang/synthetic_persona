@@ -31,6 +31,7 @@ CSV 6종과 시각화 6종을 experiments/h3/analysis/{topic}/ 에 저장한다.
 
 import json
 import re
+import shutil
 import sys
 from pathlib import Path
 
@@ -324,14 +325,16 @@ def build_attitude_scores_df(records: list[dict], persona_cache: dict) -> pd.Dat
 
 PERSONA_LEVEL_GROUP_COLS = ["persona_id", "model_label", "question_type", "info_level", "session_type", "turn_index"]
 PERSONA_LEVEL_COLUMN_ORDER = [
-    "persona_id", "group", "occupation", "age", "age_bin", "sex", "region",
+    "persona_id", "group", "group_id", "occupation", "age", "age_bin", "sex", "region", "region_group",
     "model_label", "actual_model",
     "question_type", "info_level", "session_type", "turn_index",
     "n_repetitions", "mean_score", "std_score", "min_score", "max_score",
     "mode_direction", "direction_consistency", "n_undecidable", "n_failed",
     "mean_hedge_count", "mean_num_reasons",
 ]
-GROUP_COMPARISON_VARS = ["group", "sex", "age_bin"]
+# "group"(personas_file)와 "group_id"(cohort_meta_file)는 대부분 같은 값이라 중복 검정을 피하려고
+# group_id는 여기 넣지 않았다. region_group은 cohort_meta_file에만 있는 새 축이라 추가.
+GROUP_COMPARISON_VARS = ["group", "sex", "age_bin", "region_group"]
 
 
 def load_persona_group_map(config: dict) -> dict[str, str | None]:
@@ -347,6 +350,21 @@ def load_persona_group_map(config: dict) -> dict[str, str | None]:
     return {p["persona_id"]: p.get("group") for p in data.get("personas", [])}
 
 
+def load_cohort_meta(config: dict) -> dict[str, dict]:
+    """cohort_meta_file(있으면, CSV)의 각 페르소나 메타데이터를 persona_id -> dict로.
+    있으면 occupation/age/age_bin/sex/region은 이 값을 우선 사용하고(parquet 대체),
+    group_id/region_group은 여기서만 얻을 수 있다."""
+    cohort_meta_file = config.get("cohort_meta_file")
+    if not cohort_meta_file:
+        return {}
+    path = PROJECT_ROOT / cohort_meta_file
+    if not path.exists():
+        print(f"[경고] cohort_meta_file을 찾을 수 없습니다: {path}", file=sys.stderr)
+        return {}
+    df = pd.read_csv(path, dtype={"persona_id": str})
+    return {row["persona_id"]: row.to_dict() for _, row in df.iterrows()}
+
+
 def compute_age_bin(age) -> str | None:
     if age is None:
         return None
@@ -359,7 +377,7 @@ def compute_age_bin(age) -> str | None:
 
 
 def build_persona_level_scores_df(
-    attitude_df: pd.DataFrame, persona_cache: dict, persona_group_map: dict
+    attitude_df: pd.DataFrame, persona_cache: dict, persona_group_map: dict, cohort_meta: dict | None = None
 ) -> pd.DataFrame:
     """반복(repetition) 응답들을 페르소나×조건 단위로 접어서 대표값을 계산.
 
@@ -367,11 +385,17 @@ def build_persona_level_scores_df(
     모두 제외한 점수로만 계산하고, n_undecidable/n_failed로 각각 따로 남긴다.
     mode_direction/direction_consistency는 이 두 카테고리도 하나의 방향으로 포함해서
     계산한다(응답 자체가 불안정/실패했다는 신호이므로 방향 일치도 계산에서 뺄 이유가 없음).
+
+    cohort_meta에 해당 persona_id가 있으면 occupation/age/age_bin/sex/region은
+    parquet(persona_cache) 대신 cohort_meta 값을 쓰고, group_id/region_group도 채운다.
+    없으면(구 config 호환) 전부 parquet 기반으로 채우고 group_id/region_group은 None.
     """
+    cohort_meta = cohort_meta or {}
     rows = []
     for key, group_df in attitude_df.groupby(PERSONA_LEVEL_GROUP_COLS, dropna=False):
         persona_id, model_label, question_type, info_level, session_type, turn_index = key
         persona_row = persona_cache[persona_id]
+        meta = cohort_meta.get(persona_id)
 
         directions = group_df["attitude_direction"]
         scores = group_df.loc[~directions.isin(EXCLUDED_DIRECTIONS), "attitude_score"]
@@ -380,21 +404,38 @@ def build_persona_level_scores_df(
         mode_direction = mode_series.iloc[0] if not mode_series.empty else None
         direction_consistency = (directions == mode_direction).mean() if mode_direction is not None else None
 
-        age_raw = persona_row.get("age")
-        age = int(age_raw) if pd.notna(age_raw) else None
-
         actual_model_series = group_df["actual_model"].dropna().mode()
         actual_model = actual_model_series.iloc[0] if not actual_model_series.empty else None
+
+        if meta is not None:
+            occupation = safe_str(meta.get("occupation"))
+            age = int(meta["age"]) if pd.notna(meta.get("age")) else None
+            age_bin = safe_str(meta.get("age_bin")) or compute_age_bin(age)
+            sex = safe_str(meta.get("sex"))
+            region = safe_str(meta.get("region"))
+            group_id = safe_str(meta.get("group_id"))
+            region_group = safe_str(meta.get("region_group"))
+        else:
+            age_raw = persona_row.get("age")
+            age = int(age_raw) if pd.notna(age_raw) else None
+            occupation = safe_str(persona_row.get("occupation"))
+            age_bin = compute_age_bin(age)
+            sex = safe_str(persona_row.get("sex"))
+            region = safe_str(persona_row.get("region"))
+            group_id = None
+            region_group = None
 
         rows.append(
             {
                 "persona_id": persona_id,
                 "group": persona_group_map.get(persona_id),
-                "occupation": safe_str(persona_row.get("occupation")),
+                "group_id": group_id,
+                "occupation": occupation,
                 "age": age,
-                "age_bin": compute_age_bin(age),
-                "sex": safe_str(persona_row.get("sex")),
-                "region": safe_str(persona_row.get("region")),
+                "age_bin": age_bin,
+                "sex": sex,
+                "region": region,
+                "region_group": region_group,
                 "model_label": model_label,
                 "actual_model": actual_model,
                 "question_type": question_type,
@@ -554,6 +595,7 @@ def build_comparison_pairs(records: list[dict]) -> list[dict]:
             pairs.append(
                 {
                     "comparison_type": "variant",
+                    "persona_id": record["persona_id"],
                     "model_label": record["model_label"],
                     "info_level": record["info_level"],
                     "question_type": other_qtype,
@@ -567,6 +609,7 @@ def build_comparison_pairs(records: list[dict]) -> list[dict]:
             pairs.append(
                 {
                     "comparison_type": "repeat",
+                    "persona_id": record["persona_id"],
                     "model_label": record["model_label"],
                     "info_level": record["info_level"],
                     "question_type": record["question_type"],
@@ -594,6 +637,7 @@ def compute_pair_metrics(pairs: list[dict]) -> pd.DataFrame:
         rows.append(
             {
                 "comparison_type": pair["comparison_type"],
+                "persona_id": pair["persona_id"],
                 "model_label": pair["model_label"],
                 "info_level": pair["info_level"],
                 "question_type": pair["question_type"],
@@ -614,8 +658,18 @@ def build_consistency_metrics_df(attitude_df: pd.DataFrame, pair_df: pd.DataFram
         repeat = group[group["comparison_type"] == "repeat"]
         att_group = attitude_df[attitude_df["model_label"] == model_label]
 
+        # 카이제곱 검정은 각 관측치가 독립이라고 가정한다. 반복(repetition)이 여러 번이면
+        # 같은 페르소나의 응답이 crosstab에 여러 행으로 들어가 통계량이 부풀려지므로(가짜 유의성),
+        # persona_id × question_type 당 최빈 방향(mode_direction) 1개로 먼저 접은 뒤에 crosstab을 만든다.
+        # (info_level/session_type/turn_index/repetition은 여기서 전부 접힘)
+        collapsed_direction = (
+            att_group.groupby(["persona_id", "question_type"])["attitude_direction"]
+            .agg(lambda s: s.mode().iloc[0] if not s.mode().empty else None)
+            .reset_index()
+        )
+
         chi2, p_value = None, None
-        contingency = pd.crosstab(att_group["question_type"], att_group["attitude_direction"])
+        contingency = pd.crosstab(collapsed_direction["question_type"], collapsed_direction["attitude_direction"])
         if contingency.shape[0] > 1 and contingency.shape[1] > 1:
             chi2, p_value, _, _ = stats.chi2_contingency(contingency)
 
@@ -623,6 +677,12 @@ def build_consistency_metrics_df(attitude_df: pd.DataFrame, pair_df: pd.DataFram
             {
                 "model_label": model_label,
                 "n_responses": len(att_group),
+                "n_independent_persona_question_type": len(collapsed_direction),
+                # concordance_rate 등은 pair 단위 평균이라, 반복이 늘면 pair 수(n_pairs)도 그만큼
+                # 늘어난다. 페르소나마다 반복 횟수가 균등하면 평균값 자체는 왜곡되지 않지만,
+                # n_pairs는 독립 관측치 수가 아니므로 실제 독립 인원수(n_unique_personas)를 같이 남긴다.
+                "n_pairs": len(group),
+                "n_unique_personas": group["persona_id"].nunique() if len(group) else 0,
                 "concordance_rate": group["concordant"].mean() if len(group) else None,
                 "concordance_rate_variant": variant["concordant"].mean() if len(variant) else None,
                 "concordance_rate_repeat": repeat["concordant"].mean() if len(repeat) else None,
@@ -807,13 +867,23 @@ def main() -> None:
     attitude_df = build_attitude_scores_df(records, persona_cache)
     attitude_df.to_csv(ANALYSIS_ROOT / "attitude_scores.csv", index=False)
     print(f"저장: {ANALYSIS_ROOT / 'attitude_scores.csv'} ({len(attitude_df)} rows)")
+
+    # 원본 응답(experiments/h3/results/)이 git 추적 대상이 아니라 실수로 지워지면 복구 불가능했던
+    # 적이 있어서, 파싱된 결과라도 이중으로 남겨두려고 프로젝트 루트에도 복사한다.
+    # 주의: 이 백업은 파일명이 고정이라 topic이 다른 실험을 analyze_h3.py로 돌리면 덮어써진다.
+    backup_path = PROJECT_ROOT / "attitude_scores.csv"
+    shutil.copy2(ANALYSIS_ROOT / "attitude_scores.csv", backup_path)
+    print(f"백업: {backup_path} (topic이 바뀌면 덮어써지니 필요하면 별도로 보관하세요)")
     print(
         f"태도 분류 비용: 약 ${_attitude_cost['total_cost']:.4f} "
         f"({_attitude_cost['call_count']}회 호출, 캐시 덕분에 중복 응답은 재호출 안 함)"
     )
 
     persona_group_map = load_persona_group_map(config)
-    persona_level_df = build_persona_level_scores_df(attitude_df, persona_cache, persona_group_map)
+    cohort_meta = load_cohort_meta(config)
+    if cohort_meta:
+        print(f"cohort_meta_file에서 {len(cohort_meta)}명의 메타데이터 로딩 완료.")
+    persona_level_df = build_persona_level_scores_df(attitude_df, persona_cache, persona_group_map, cohort_meta)
     persona_level_df.to_csv(ANALYSIS_ROOT / "persona_level_scores.csv", index=False)
     print(f"저장: {ANALYSIS_ROOT / 'persona_level_scores.csv'} ({len(persona_level_df)} rows)")
 

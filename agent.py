@@ -4,6 +4,7 @@ main.py의 system prompt 생성(build_system_prompt)과 API 키 로딩(load_api_
 로직을 재사용해서, 지정한 모델로 페르소나에게 질문하고 구조화된 결과를 반환한다.
 """
 
+import threading
 from datetime import datetime, timezone
 from typing import Any
 
@@ -47,6 +48,7 @@ _cost_tracker = {
     "total_input_cost": 0.0,
     "total_output_cost": 0.0,
 }
+_cost_lock = threading.Lock()  # run_h3_experiment.py --concurrency로 여러 스레드에서 동시 호출될 수 있음
 
 
 def _record_cost_and_maybe_print(model_id: str, prompt_tokens: int, completion_tokens: int, total_calls: int | None) -> None:
@@ -55,18 +57,19 @@ def _record_cost_and_maybe_print(model_id: str, prompt_tokens: int, completion_t
     input_cost = prompt_tokens / 1_000_000 * pricing["input"]
     output_cost = completion_tokens / 1_000_000 * pricing["output"]
 
-    _cost_tracker["call_count"] += 1
-    _cost_tracker["total_input_cost"] += input_cost
-    _cost_tracker["total_output_cost"] += output_cost
+    with _cost_lock:
+        _cost_tracker["call_count"] += 1
+        _cost_tracker["total_input_cost"] += input_cost
+        _cost_tracker["total_output_cost"] += output_cost
 
-    if _cost_tracker["call_count"] % 10 == 0:
-        total_cost = _cost_tracker["total_input_cost"] + _cost_tracker["total_output_cost"]
-        call_count = _cost_tracker["call_count"]
-        call_label = f"{call_count}/{total_calls}" if total_calls else str(call_count)
-        print(
-            f"[호출 {call_label}] 누적 비용: ${total_cost:.2f} "
-            f"(입력: ${_cost_tracker['total_input_cost']:.2f}, 출력: ${_cost_tracker['total_output_cost']:.2f})"
-        )
+        if _cost_tracker["call_count"] % 10 == 0:
+            total_cost = _cost_tracker["total_input_cost"] + _cost_tracker["total_output_cost"]
+            call_count = _cost_tracker["call_count"]
+            call_label = f"{call_count}/{total_calls}" if total_calls else str(call_count)
+            print(
+                f"[호출 {call_label}] 누적 비용: ${total_cost:.2f} "
+                f"(입력: ${_cost_tracker['total_input_cost']:.2f}, 출력: ${_cost_tracker['total_output_cost']:.2f})"
+            )
 
 
 class AgentAPIError(RuntimeError):

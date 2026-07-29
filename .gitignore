@@ -21,6 +21,10 @@ persona_sample_100.csv
 experiments/h3/results/
 experiments/h3/analysis/
 
+# analyze_h3.py가 experiments/h3/analysis/{topic}/attitude_scores.csv를 이중 백업하는 루트 사본
+# (원본 삭제 대비용 로컬 백업일 뿐, 재생성 가능하니 git에는 안 올림)
+/attitude_scores.csv
+
 # ── Python 캐시/빌드 산물 ───────────────────────────────────
 __pycache__/
 *.py[cod]
