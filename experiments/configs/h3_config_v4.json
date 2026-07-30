@@ -4,52 +4,53 @@
   "results_topic": "medical_school_quota_v4",
   "personas_file": "experiments/h3/sampled_personas_v4.json",
   "cohort_meta_file": "experiments/h3/cohorts/cohort_v4_meta.csv",
-  "repetitions": 5,
+  "repetitions": 3,
   "question_types": ["original"],
   "info_levels": ["overview", "with_counterarguments"],
   "session_types": ["new_session"],
-  "_pricing_note": "아래 pricing_usd_per_1k_tokens 값은 참고용 근사치입니다. 실행 전 OpenAI 공식 요금 페이지에서 최신 가격을 확인하고 업데이트하세요.",
+  "_pricing_note": "gpt-5.6 계열은 코드네임 티어제(sol/terra/luna). 가격은 openai.com/api/pricing 확인(2026-07). bare \"gpt-5.6\"은 sol로 라우팅되므로 재현성을 위해 명시적 id를 쓴다.",
+  "_max_tokens_note": "사전 테스트에서 terra가 742/1024토큰(72%)을 소모해 1024→2048로 상향. 실제 과금은 생성된 토큰만큼만 되므로 상한을 올려도 비용에는 영향 없음.",
   "models": {
-    "gpt4o": {
-      "model_id": "gpt-4o",
+    "luna": {
+      "model_id": "gpt-5.6-luna",
       "generation_params": {
         "temperature": 0.7,
         "top_p": 1.0,
-        "max_tokens": 1024,
+        "max_tokens": 2048,
+        "frequency_penalty": 0,
+        "presence_penalty": 0
+      },
+      "pricing_usd_per_1k_tokens": {
+        "prompt": 0.001,
+        "completion": 0.006
+      }
+    },
+    "terra": {
+      "model_id": "gpt-5.6-terra",
+      "generation_params": {
+        "temperature": 0.7,
+        "top_p": 1.0,
+        "max_tokens": 2048,
         "frequency_penalty": 0,
         "presence_penalty": 0
       },
       "pricing_usd_per_1k_tokens": {
         "prompt": 0.0025,
-        "completion": 0.01
+        "completion": 0.015
       }
     },
-    "gpt4o_mini": {
-      "model_id": "gpt-4o-mini",
+    "sol": {
+      "model_id": "gpt-5.6-sol",
       "generation_params": {
         "temperature": 0.7,
         "top_p": 1.0,
-        "max_tokens": 1024,
+        "max_tokens": 2048,
         "frequency_penalty": 0,
         "presence_penalty": 0
       },
       "pricing_usd_per_1k_tokens": {
-        "prompt": 0.00015,
-        "completion": 0.0006
-      }
-    },
-    "gpt41": {
-      "model_id": "gpt-4.1",
-      "generation_params": {
-        "temperature": 0.7,
-        "top_p": 1.0,
-        "max_tokens": 1024,
-        "frequency_penalty": 0,
-        "presence_penalty": 0
-      },
-      "pricing_usd_per_1k_tokens": {
-        "prompt": 0.002,
-        "completion": 0.008
+        "prompt": 0.005,
+        "completion": 0.03
       }
     }
   }

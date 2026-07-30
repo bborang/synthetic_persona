@@ -191,6 +191,8 @@ def compute_run_meta(model_id: str, results_dir: Path, total_calls: int, pricing
     total_prompt_tokens = 0
     total_completion_tokens = 0
     total_api_requests = 0
+    turns_with_dropped_params = 0
+    dropped_params_counts: dict[str, int] = {}
     for path in result_files:
         with open(path, encoding="utf-8") as f:
             record = json.load(f)
@@ -198,6 +200,11 @@ def compute_run_meta(model_id: str, results_dir: Path, total_calls: int, pricing
             total_prompt_tokens += turn["usage"]["prompt_tokens"]
             total_completion_tokens += turn["usage"]["completion_tokens"]
             total_api_requests += 1
+            dropped = turn.get("dropped_params") or []
+            if dropped:
+                turns_with_dropped_params += 1
+            for name in dropped:
+                dropped_params_counts[name] = dropped_params_counts.get(name, 0) + 1
 
     estimated_cost_usd = (
         total_prompt_tokens / 1000 * pricing["prompt"]
@@ -213,6 +220,8 @@ def compute_run_meta(model_id: str, results_dir: Path, total_calls: int, pricing
         "total_prompt_tokens": total_prompt_tokens,
         "total_completion_tokens": total_completion_tokens,
         "estimated_cost_usd": round(estimated_cost_usd, 4),
+        "turns_with_dropped_params": turns_with_dropped_params,
+        "dropped_params_counts": dropped_params_counts,
         "start_time": start_time.strftime("%Y-%m-%dT%H:%M:%SZ"),
         "end_time": end_time.strftime("%Y-%m-%dT%H:%M:%SZ"),
         "duration_seconds": round((end_time - start_time).total_seconds(), 1),

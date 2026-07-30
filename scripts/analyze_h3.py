@@ -1,9 +1,11 @@
 """H3 실험 결과 분석 스크립트.
 
-h3_config.json의 topic을 읽어, experiments/h3/results/{topic}/{model_label}/raw_responses/*.json 을
+--config(기본 experiments/configs/h3_config.json)의 topic/results_topic을 읽어,
+experiments/h3/results/{results_topic 또는 topic}/{model_label}/raw_responses/*.json 을
 모두 로드해서 태도 점수/핵심 근거/페르소나 속성 언급 여부를 파싱하고,
 종속변수(초기 입장 일치율, 태도 변화량, 핵심 근거 유지율, 응답 방어성)를 계산한 뒤
-CSV 6종과 시각화 6종을 experiments/h3/analysis/{topic}/ 에 저장한다.
+CSV 6종과 시각화 6종을 experiments/h3/analysis/{results_topic 또는 topic}/ 에 저장한다.
+(results_topic이 없으면 topic과 동일 — run_h3_experiment.py와 같은 규칙)
 
 주의:
 - 태도 판정(parse_attitude)은 gpt-5-mini LLM 분류기를 사용한다 (topic을 프롬프트에 주입해서
@@ -27,12 +29,17 @@ CSV 6종과 시각화 6종을 experiments/h3/analysis/{topic}/ 에 저장한다.
 
 사용법:
     python scripts/analyze_h3.py
+    python scripts/analyze_h3.py --config experiments/configs/h3_config_v4.json
 """
 
+import argparse
+import hashlib
 import json
 import re
 import shutil
 import sys
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 import matplotlib
@@ -56,18 +63,21 @@ import pandas as pd
 from openai import OpenAI
 from scipy import stats
 from sklearn.metrics.pairwise import cosine_similarity
+from tqdm import tqdm
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from main import fetch_full_persona, load_api_key, parse_list_field, safe_str  # noqa: E402
+from main import PARQUET_PATH, load_api_key, parse_list_field, safe_str  # noqa: E402
 from agent import DEFAULT_GENERATION_PARAMS, PRICING_USD_PER_1M_TOKENS, _call_chat_completions  # noqa: E402
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-CONFIG_PATH = PROJECT_ROOT / "experiments" / "configs" / "h3_config.json"
+DEFAULT_CONFIG_PATH = "experiments/configs/h3_config.json"
 RESULTS_BASE = PROJECT_ROOT / "experiments" / "h3" / "results"
 ANALYSIS_BASE = PROJECT_ROOT / "experiments" / "h3" / "analysis"
 
-# main()에서 h3_config.json의 topic을 읽어 {RESULTS_BASE}/{topic}, {ANALYSIS_BASE}/{topic} 로 갱신된다.
+# main()에서 --config가 가리키는 config의 topic/results_topic을 읽어
+# {RESULTS_BASE}/{results_topic}, {ANALYSIS_BASE}/{results_topic} 로 갱신된다.
+# (results_topic이 없으면 topic과 동일 — run_h3_experiment.py와 동일한 규칙)
 RESULTS_ROOT = RESULTS_BASE
 ANALYSIS_ROOT = ANALYSIS_BASE
 PLOTS_DIR = ANALYSIS_ROOT / "plots"
@@ -113,6 +123,11 @@ ATTITUDE_PROMPT_TEMPLATE = """다음은 '{topic}' 정책에 대해 어떤 사람
 _attitude_client: OpenAI | None = None
 _attitude_cache: dict[str, dict] = {}
 _attitude_cost = {"call_count": 0, "total_cost": 0.0}
+_attitude_cost_lock = threading.Lock()  # ThreadPoolExecutor로 병렬 분류할 때 카운터 갱신 보호
+
+JUDGE_CACHE_FILENAME = "_judge_cache.json"
+JUDGE_CONCURRENCY = 8
+JUDGE_CACHE_SAVE_EVERY = 50  # 이 건수마다 중간 저장 — 도중에 프로세스가 죽어도 그때까지는 보존
 
 
 def _get_attitude_client() -> OpenAI:
@@ -120,6 +135,27 @@ def _get_attitude_client() -> OpenAI:
     if _attitude_client is None:
         _attitude_client = OpenAI(api_key=load_api_key())
     return _attitude_client
+
+
+def _cache_key(topic: str, text: str) -> str:
+    """디스크(JSON)에 저장 가능하도록 (topic, text) 조합을 고정 길이 문자열로 해시."""
+    return hashlib.sha256(f"{topic}␟{text}".encode("utf-8")).hexdigest()
+
+
+def load_judge_cache(path: Path) -> None:
+    """이전 실행에서 저장한 판정 결과(_judge_cache.json)를 읽어 인메모리 캐시를 채운다.
+    프로세스가 중간에 강제 종료돼도, 여기 저장된 만큼은 gpt-5-mini 재호출 없이 재사용한다."""
+    if not path.exists():
+        return
+    with open(path, encoding="utf-8") as f:
+        disk_cache = json.load(f)
+    _attitude_cache.update(disk_cache)
+    print(f"판정 결과 디스크 캐시 로딩: {len(disk_cache)}건 재사용 (경로: {path})")
+
+
+def save_judge_cache(path: Path) -> None:
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(_attitude_cache, f, ensure_ascii=False)
 
 
 UNDECIDABLE = "판단불가"  # 모델이 스스로 "입장을 밝히지 않았다"고 판단한 경우
@@ -138,7 +174,7 @@ def parse_attitude(text: str, topic: str) -> dict:
     if not text or not text.strip():
         return {"direction": FAILED, "score": None}
 
-    cache_key = (topic, text)
+    cache_key = _cache_key(topic, text)
     if cache_key in _attitude_cache:
         return _attitude_cache[cache_key]
 
@@ -157,11 +193,12 @@ def parse_attitude(text: str, topic: str) -> dict:
 
     usage = response.usage
     pricing = PRICING_USD_PER_1M_TOKENS.get(ATTITUDE_MODEL, {"input": 0, "output": 0})
-    _attitude_cost["call_count"] += 1
-    _attitude_cost["total_cost"] += (
-        usage.prompt_tokens / 1_000_000 * pricing["input"]
-        + usage.completion_tokens / 1_000_000 * pricing["output"]
-    )
+    with _attitude_cost_lock:
+        _attitude_cost["call_count"] += 1
+        _attitude_cost["total_cost"] += (
+            usage.prompt_tokens / 1_000_000 * pricing["input"]
+            + usage.completion_tokens / 1_000_000 * pricing["output"]
+        )
 
     try:
         parsed = json.loads(response.choices[0].message.content)
@@ -178,6 +215,43 @@ def parse_attitude(text: str, topic: str) -> dict:
 
     _attitude_cache[cache_key] = result
     return result
+
+
+def classify_attitudes_parallel(
+    records: list[dict], cache_path: Path, max_workers: int = JUDGE_CONCURRENCY
+) -> None:
+    """records의 모든 turn 텍스트 중 아직 캐시에 없는 (topic, text) 조합만 모아
+    ThreadPoolExecutor로 병렬 분류한다. 이후 build_attitude_scores_df/compute_pair_metrics는
+    같은 텍스트를 다시 만나면 이미 채워진 _attitude_cache를 그대로 히트한다(추가 API 호출 없음).
+
+    JUDGE_CACHE_SAVE_EVERY건마다 디스크에 중간 저장한다 — 프로세스가 도중에 죽어도
+    (예: 강제 종료, 타임아웃) 그때까지 판정한 결과는 다음 실행에서 재사용된다.
+    """
+    pending: dict[str, tuple[str, str]] = {}
+    for record in records:
+        topic = record["topic"]
+        for turn in record["turns"]:
+            text = turn["parsed_response"] or ""
+            key = _cache_key(topic, text)
+            if key not in _attitude_cache and key not in pending:
+                pending[key] = (topic, text)
+
+    if not pending:
+        print("모든 응답이 이미 판정 캐시에 있어 새로 분류할 것이 없습니다.")
+        return
+
+    print(f"{ATTITUDE_MODEL}로 {len(pending)}건 신규 분류 (동시 {max_workers}개, 캐시에 없는 것만)...")
+    completed = 0
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = [executor.submit(parse_attitude, text, topic) for topic, text in pending.values()]
+        for future in tqdm(as_completed(futures), total=len(futures), desc="태도 판정"):
+            future.result()
+            completed += 1
+            if completed % JUDGE_CACHE_SAVE_EVERY == 0:
+                save_judge_cache(cache_path)
+
+    save_judge_cache(cache_path)
+    print(f"판정 결과 디스크 캐시 저장 완료: {cache_path} (총 {len(_attitude_cache)}건)")
 
 
 def extract_reasons(text: str, max_reasons: int = 5) -> list[str]:
@@ -224,11 +298,15 @@ def mentions_persona_attributes(text: str, persona_row: pd.Series) -> bool:
 
 # ── 결과 파일 로딩 ────────────────────────────────────────────────
 
-def load_all_results() -> list[dict]:
+def load_all_results(model_filter: set[str] | None = None) -> list[dict]:
+    """model_filter가 주어지면 RESULTS_ROOT 아래 그 이름의 하위 폴더(모델 라벨)만 읽는다.
+    None(기본값)이면 기존 동작과 동일하게 전부 읽는다."""
     records = []
     if not RESULTS_ROOT.exists():
         return records
     for model_dir in sorted(RESULTS_ROOT.iterdir()):
+        if model_filter is not None and model_dir.name not in model_filter:
+            continue
         raw_dir = model_dir / "raw_responses"
         if not raw_dir.exists():
             continue
@@ -237,6 +315,16 @@ def load_all_results() -> list[dict]:
                 record = json.load(f)
             records.append(record)
     return records
+
+
+def fetch_personas_batch(persona_ids: set[str]) -> dict[str, pd.Series]:
+    """fetch_full_persona()를 N번 부르면 매번 전체 parquet(2.8GB)를 스캔해서 150명 기준
+    수십 분이 걸린다. "in" 필터로 한 번에 읽으면 같은 인원이 수 초~수십 초면 끝난다
+    (run_h3_experiment.py의 fetch_personas_batch와 동일한 방식)."""
+    if not persona_ids:
+        return {}
+    df = pd.read_parquet(PARQUET_PATH, filters=[("uuid", "in", list(persona_ids))])
+    return {row["uuid"]: row for _, row in df.iterrows()}
 
 
 # ── 임베딩 기반 핵심 근거 유지율 ───────────────────────────────────
@@ -622,17 +710,24 @@ def build_comparison_pairs(records: list[dict]) -> list[dict]:
     return pairs
 
 
-def compute_pair_metrics(pairs: list[dict]) -> pd.DataFrame:
+def compute_pair_metrics(pairs: list[dict], with_reason_retention: bool = True) -> pd.DataFrame:
+    """with_reason_retention=False면 근거 유지율(text-embedding-3-small 호출)을 생략하고
+    해당 컬럼을 전부 None으로 채운다. concordance_rate/attitude_change 등 다른 지표는
+    태도 판정 캐시만 사용하므로(이미 classify_attitudes_parallel에서 채워짐) 영향받지 않는다."""
     rows = []
     for pair in pairs:
         before_attitude = parse_attitude(pair["before_text"], pair["topic"])
         after_attitude = parse_attitude(pair["after_text"], pair["topic"])
-        before_reasons = extract_reasons(pair["before_text"])
-        after_reasons = extract_reasons(pair["after_text"])
 
         attitude_change = None
         if before_attitude["score"] is not None and after_attitude["score"] is not None:
             attitude_change = abs(after_attitude["score"] - before_attitude["score"])
+
+        reason_retention = None
+        if with_reason_retention:
+            before_reasons = extract_reasons(pair["before_text"])
+            after_reasons = extract_reasons(pair["after_text"])
+            reason_retention = reason_retention_rate(before_reasons, after_reasons)
 
         rows.append(
             {
@@ -643,7 +738,7 @@ def compute_pair_metrics(pairs: list[dict]) -> pd.DataFrame:
                 "question_type": pair["question_type"],
                 "concordant": before_attitude["direction"] == after_attitude["direction"],
                 "attitude_change": attitude_change,
-                "reason_retention": reason_retention_rate(before_reasons, after_reasons),
+                "reason_retention": reason_retention,
             }
         )
     return pd.DataFrame(rows)
@@ -652,6 +747,13 @@ def compute_pair_metrics(pairs: list[dict]) -> pd.DataFrame:
 # ── consistency_metrics.csv / cross_analysis.csv ─────────────────
 
 def build_consistency_metrics_df(attitude_df: pd.DataFrame, pair_df: pd.DataFrame) -> pd.DataFrame:
+    """question_types/session_types가 각각 1개뿐인 설계(v4 gpt-5.6 등)에서는
+    build_comparison_pairs가 만들 수 있는 variant/repeat 쌍이 아예 없어 pair_df가 빈 채로 들어온다.
+    그런 경우 groupby("model_label")이 KeyError를 내므로 먼저 빈 DataFrame으로 넘어간다."""
+    if pair_df.empty or "model_label" not in pair_df.columns:
+        print("[안내] 비교 쌍이 없어 consistency_metrics를 생략합니다.")
+        return pd.DataFrame()
+
     rows = []
     for model_label, group in pair_df.groupby("model_label"):
         variant = group[group["comparison_type"] == "variant"]
@@ -721,6 +823,9 @@ def build_cross_analysis_df(attitude_df: pd.DataFrame) -> pd.DataFrame:
 # ── 시각화 ────────────────────────────────────────────────────────
 
 def plot_concordance_bar(consistency_df: pd.DataFrame) -> None:
+    if consistency_df.empty:
+        print("[안내] consistency_metrics가 비어 있어 concordance_by_model.png는 생성하지 않습니다.")
+        return
     fig, ax = plt.subplots(figsize=(6, 4))
     ax.bar(consistency_df["model_label"], consistency_df["concordance_rate"])
     ax.set_ylabel("초기 입장 일치율")
@@ -838,32 +943,68 @@ def plot_score_distribution_by_group(attitude_df: pd.DataFrame, persona_group_ma
 def main() -> None:
     global RESULTS_ROOT, ANALYSIS_ROOT, PLOTS_DIR
 
-    if not CONFIG_PATH.exists():
-        print(f"[오류] 설정 파일을 찾을 수 없습니다: {CONFIG_PATH}", file=sys.stderr)
+    parser = argparse.ArgumentParser(description="H3 실험 결과 분석")
+    parser.add_argument(
+        "--config",
+        default=DEFAULT_CONFIG_PATH,
+        help=f"h3 실험 설정 파일 경로, 프로젝트 루트 기준 (기본: {DEFAULT_CONFIG_PATH})",
+    )
+    parser.add_argument(
+        "--models",
+        default=None,
+        help=(
+            "쉼표로 구분한 모델 라벨(=결과 폴더명) 목록. 지정하면 이 모델들만 분석 대상으로 삼는다 "
+            "(예: --models luna,terra,sol). 기본값(미지정)은 results_topic 폴더 아래 모든 모델."
+        ),
+    )
+    parser.add_argument(
+        "--with-reason-retention",
+        action="store_true",
+        help=(
+            "비교 쌍(paraphrase/pressure/반복 세션)의 핵심 근거 유지율을 text-embedding-3-small API로 "
+            "계산한다. 기본은 꺼짐 — concordance_rate/attitude_change 등 다른 지표는 그대로 계산되고, "
+            "reason_retention_rate 관련 컬럼만 None이 되며 임베딩 API 호출 자체가 생략된다."
+        ),
+    )
+    args = parser.parse_args()
+
+    config_path = PROJECT_ROOT / args.config
+    if not config_path.exists():
+        print(f"[오류] 설정 파일을 찾을 수 없습니다: {config_path}", file=sys.stderr)
         sys.exit(1)
-    with open(CONFIG_PATH, encoding="utf-8") as f:
+    with open(config_path, encoding="utf-8") as f:
         config = json.load(f)
     topic = config["topic"]
+    # results_topic이 없으면 topic과 동일 — run_h3_experiment.py가 결과를 저장할 때 쓰는 것과 같은 규칙.
+    # (h3_config_v4.json처럼 topic="medical_school_quota"인데 결과는 results_topic="medical_school_quota_v4"에
+    # 저장된 경우, topic만 보면 엉뚱한 빈 폴더를 찾게 되므로 반드시 이 규칙을 맞춰야 한다.)
+    results_topic = config.get("results_topic", topic)
 
-    RESULTS_ROOT = RESULTS_BASE / topic
-    ANALYSIS_ROOT = ANALYSIS_BASE / topic
+    RESULTS_ROOT = RESULTS_BASE / results_topic
+    ANALYSIS_ROOT = ANALYSIS_BASE / results_topic
     PLOTS_DIR = ANALYSIS_ROOT / "plots"
 
-    records = load_all_results()
+    model_filter = set(args.models.split(",")) if args.models else None
+    records = load_all_results(model_filter)
     if not records:
-        print(f"[안내] {RESULTS_ROOT} 에 분석할 결과 파일이 없습니다. 먼저 run_h3_experiment.py를 실행해주세요.")
+        target = f"{RESULTS_ROOT} (모델 필터: {sorted(model_filter)})" if model_filter else str(RESULTS_ROOT)
+        print(f"[안내] {target} 에 분석할 결과 파일이 없습니다. 먼저 run_h3_experiment.py를 실행해주세요.")
         return
 
     print(f"결과 파일 {len(records)}개 로딩 완료.")
 
-    persona_ids = {r["persona_id"] for r in records}
-    print(f"페르소나 {len(persona_ids)}명 정보 로딩 중...")
-    persona_cache = {pid: fetch_full_persona(pid) for pid in persona_ids}
-
     ANALYSIS_ROOT.mkdir(parents=True, exist_ok=True)
     PLOTS_DIR.mkdir(parents=True, exist_ok=True)
 
-    print(f"태도 판정 중 ({ATTITUDE_MODEL} API 호출, 동일 텍스트는 캐시로 재사용)...")
+    persona_ids = {r["persona_id"] for r in records}
+    print(f"페르소나 {len(persona_ids)}명 정보 로딩 중... (배치 조회)")
+    persona_cache = fetch_personas_batch(persona_ids)
+
+    judge_cache_path = ANALYSIS_ROOT / JUDGE_CACHE_FILENAME
+    load_judge_cache(judge_cache_path)
+    classify_attitudes_parallel(records, judge_cache_path)
+
+    print(f"태도 판정 결과 취합 중 ({ATTITUDE_MODEL} 캐시 히트, 추가 API 호출 없음)...")
     attitude_df = build_attitude_scores_df(records, persona_cache)
     attitude_df.to_csv(ANALYSIS_ROOT / "attitude_scores.csv", index=False)
     print(f"저장: {ANALYSIS_ROOT / 'attitude_scores.csv'} ({len(attitude_df)} rows)")
@@ -874,10 +1015,16 @@ def main() -> None:
     backup_path = PROJECT_ROOT / "attitude_scores.csv"
     shutil.copy2(ANALYSIS_ROOT / "attitude_scores.csv", backup_path)
     print(f"백업: {backup_path} (topic이 바뀌면 덮어써지니 필요하면 별도로 보관하세요)")
-    print(
-        f"태도 분류 비용: 약 ${_attitude_cost['total_cost']:.4f} "
-        f"({_attitude_cost['call_count']}회 호출, 캐시 덕분에 중복 응답은 재호출 안 함)"
-    )
+    if ATTITUDE_MODEL not in PRICING_USD_PER_1M_TOKENS:
+        print(
+            f"[안내] {ATTITUDE_MODEL} 가격이 PRICING_USD_PER_1M_TOKENS에 등록돼 있지 않아 "
+            f"비용 추정이 불가합니다 (실제 호출 {_attitude_cost['call_count']}회는 정상 진행됨)."
+        )
+    else:
+        print(
+            f"태도 분류 비용: 약 ${_attitude_cost['total_cost']:.4f} "
+            f"({_attitude_cost['call_count']}회 호출, 캐시 덕분에 중복 응답은 재호출 안 함)"
+        )
 
     persona_group_map = load_persona_group_map(config)
     cohort_meta = load_cohort_meta(config)
@@ -896,24 +1043,31 @@ def main() -> None:
     print(f"저장: {ANALYSIS_ROOT / 'score_distribution.csv'} ({len(score_distribution_df)} rows)")
 
     pairs = build_comparison_pairs(records)
-    print(f"비교 쌍 {len(pairs)}개에 대해 근거 유지율 계산 중 (임베딩 API 호출)...")
-    pair_df = compute_pair_metrics(pairs)
+    if args.with_reason_retention:
+        print(f"비교 쌍 {len(pairs)}개에 대해 근거 유지율 계산 중 (임베딩 API 호출)...")
+    else:
+        print(f"비교 쌍 {len(pairs)}개 처리 중 (--with-reason-retention 없어 근거 유지율/임베딩 호출 생략)...")
+    pair_df = compute_pair_metrics(pairs, with_reason_retention=args.with_reason_retention)
 
     consistency_df = build_consistency_metrics_df(attitude_df, pair_df)
-    consistency_df.to_csv(ANALYSIS_ROOT / "consistency_metrics.csv", index=False)
-    print(f"저장: {ANALYSIS_ROOT / 'consistency_metrics.csv'}")
+    if consistency_df.empty:
+        print(f"[안내] consistency_metrics가 비어 있어 {ANALYSIS_ROOT / 'consistency_metrics.csv'} 저장을 생략합니다.")
+    else:
+        consistency_df.to_csv(ANALYSIS_ROOT / "consistency_metrics.csv", index=False)
+        print(f"저장: {ANALYSIS_ROOT / 'consistency_metrics.csv'}")
 
     cross_df = build_cross_analysis_df(attitude_df)
     cross_df.to_csv(ANALYSIS_ROOT / "cross_analysis.csv", index=False)
     print(f"저장: {ANALYSIS_ROOT / 'cross_analysis.csv'}")
 
-    plot_concordance_bar(consistency_df)
+    if not consistency_df.empty:
+        plot_concordance_bar(consistency_df)
     plot_defensiveness_line(attitude_df)
     plot_reason_count_box(attitude_df)
     plot_model_size_consistency(attitude_df)
     plot_score_distribution_stacked(attitude_df)
     plot_score_distribution_by_group(attitude_df, persona_group_map)
-    print(f"저장: {PLOTS_DIR} 아래 PNG (최대 6개, group 메타데이터 없으면 5개)")
+    print(f"저장: {PLOTS_DIR} 아래 PNG (최대 6개, group 메타데이터 없으면 5개, consistency 없으면 5개 중 1개 더 빠짐)")
 
 
 if __name__ == "__main__":

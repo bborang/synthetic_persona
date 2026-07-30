@@ -20,11 +20,18 @@ PRICING_USD_PER_1M_TOKENS = {
     "gpt-4o": {"input": 2.50, "output": 10.00},
     "gpt-4o-mini": {"input": 0.15, "output": 0.60},
     "gpt-4.1": {"input": 2.00, "output": 8.00},
-    # TODO: gpt-5 계열 정확한 가격이 확정되면 아래 0 값을 실제 가격으로 갱신할 것.
+    # TODO: gpt-5.4 정확한 가격이 확정되면 아래 0 값을 실제 가격으로 갱신할 것.
     # (reasoning_tokens도 completion_tokens에 포함되어 과금되므로, usage["reasoning_tokens"]로 별도 확인 가능)
     "gpt-5.4": {"input": 0, "output": 0},
-    "gpt-5.6": {"input": 0, "output": 0},
-    "gpt-5-mini": {"input": 0, "output": 0},
+    # 가격 출처: openai.com/api/pricing (2026-07 확인). analyze_h3.py의 태도 분류기(ATTITUDE_MODEL)로 쓰임.
+    "gpt-5-mini": {"input": 0.25, "output": 2.00},
+    # gpt-5.6은 mini/nano 대신 코드네임 티어 체계(sol/terra/luna)를 씀. bare "gpt-5.6"은
+    # 존재하지 않는 id가 아니라 sol로 라우팅되는 별칭이지만(models.list()/spotcheck 응답의
+    # model 필드로 확인됨), 재현성을 위해 항상 명시적 id를 쓴다.
+    # 가격 출처: openai.com/api/pricing (2026-07 확인)
+    "gpt-5.6-sol": {"input": 5.00, "output": 30.00},
+    "gpt-5.6-terra": {"input": 2.50, "output": 15.00},
+    "gpt-5.6-luna": {"input": 1.00, "output": 6.00},
 }
 
 SUPPORTED_MODELS = set(PRICING_USD_PER_1M_TOKENS.keys())
