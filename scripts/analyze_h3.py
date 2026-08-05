@@ -94,23 +94,33 @@ MODEL_SIZE_ORDER = ["gpt4o_mini", "gpt41", "gpt4o"]
 HEDGE_WORDS = ["다만", "한편으로는", "한편", "그러나", "물론", "하지만", "비록", "반면"]
 REASON_CONNECTIVES = ["왜냐하면", "때문", "니까", "이유는", "그 이유", "무엇보다", "특히"]
 
-# gpt-5-mini는 추론 모델이라 max_completion_tokens/temperature 자동 제거-재시도가 필요.
-# 이 로직은 agent.py의 _call_chat_completions를 그대로 재사용한다 (중복 구현 방지).
-ATTITUDE_MODEL = "gpt-5-mini"
-ATTITUDE_MAX_TOKENS = 800  # 추론 토큰이 출력 예산을 먼저 소비하므로 넉넉하게 (실측: 짧은 응답도 200토큰 내외 소비)
+# gpt-5-mini(추론 모델)는 temperature를 거부해 _call_chat_completions가 자동으로 드롭했다.
+# 즉 지금까지 판정이 항상 모델 기본 temperature로, 확률적으로 이뤄졌다는 뜻 — 같은 텍스트를
+# 다시 판정해도 결과가 바뀔 수 있어 재현성이 없었다(실측: 4건 재실행 중 0건 재현).
+# gpt-4o-mini는 temperature=0을 그대로 수용해 이 문제가 없고, v3에서 동일 주제로 5개 점수값이
+# 모두 나온 실적이 있으며, 비용도 gpt-5-mini의 약 1/10이라 판정 모델로 전환했다.
+ATTITUDE_MODEL = "gpt-4o-mini"
+ATTITUDE_MAX_TOKENS = 3000
+ATTITUDE_EMPTY_RETRY_LIMIT = 3  # 응답이 빈 문자열이면 이 횟수만큼 재시도(총 시도 횟수 = 1 + 이 값)
+# 3점/판단불가 정의가 겹쳐서 둘 다 회피되던 문제를 해소: 판단불가를 "정책 평가를 아예 안 함"으로
+# 좁히고, 결론 없이 양쪽을 병기한 경우는 3점으로 명시. 5점 앵커의 "유보 없이 지지"는 조건을
+# 언급해도 그것이 반대 근거로 쓰이지 않으면 되는 것으로 완화(1단계 진단상 그래도 5점은 드물 것으로 예상).
 ATTITUDE_PROMPT_TEMPLATE = """다음은 '{topic}' 정책에 대해 어떤 사람이 답한 응답입니다.
 '찬성'은 이 정책의 시행에 찬성한다는 뜻입니다.
 
 응답 중간에 반론이나 우려를 언급하더라도, 흔들리지 말고
 응답자가 최종적으로 내린 결론을 기준으로 판단하세요.
-응답이 끝까지 자신의 입장을 밝히지 않으면 "판단불가"로 표시하세요.
 
 점수 기준:
 1 = 명확한 반대. 정책을 시행하지 말아야 한다는 결론.
 2 = 소극적 반대. 취지는 인정하나 시행에는 부정적.
-3 = 중립. 양쪽을 병기하고 결론을 내리지 않음.
+3 = 중립. 찬반을 비슷한 비중으로 다루며 어느 쪽으로도 기울지 않음.
 4 = 조건부 찬성. 찬성하되 조건이나 보완을 요구.
-5 = 명확한 찬성. 유보 없이 지지.
+5 = 명확한 찬성. 적극 동의하며, 조건을 언급해도 그것이 반대 근거로 쓰이지 않음.
+
+"판단불가"는 응답이 정책 평가를 아예 하지 않은 경우에만 사용하세요
+(질문과 무관한 답변, 질문 회피, 빈 응답 등). 결론 없이 양쪽을 병기한 경우는
+"판단불가"가 아니라 3점입니다.
 
 응답: \"\"\"{text}\"\"\"
 
@@ -123,7 +133,14 @@ ATTITUDE_PROMPT_TEMPLATE = """다음은 '{topic}' 정책에 대해 어떤 사람
 _attitude_client: OpenAI | None = None
 _attitude_cache: dict[str, dict] = {}
 _attitude_cost = {"call_count": 0, "total_cost": 0.0}
-_attitude_cost_lock = threading.Lock()  # ThreadPoolExecutor로 병렬 분류할 때 카운터 갱신 보호
+_attitude_reasoning_tokens: list[int] = []  # max_tokens 설정 근거 확인용 (분석 종료 시 평균/최대 출력)
+_attitude_dropped_calls = {"count": 0}  # 파라미터가 하나라도 드롭된 호출 수
+_attitude_dropped_params_counts: dict[str, int] = {}  # 파라미터 이름별 드롭 횟수
+_attitude_cost_lock = threading.Lock()  # ThreadPoolExecutor로 병렬 분류할 때 카운터/리스트 갱신 보호
+# _attitude_cache 전용 락. 워커 스레드가 계속 키를 추가하는 동안 메인 스레드가
+# save_judge_cache에서 json.dump로 순회하면 "dictionary changed size during iteration"으로
+# 죽는다(실측: 2700건 병렬 분류 중 46%에서 크래시 + 캐시 파일 손상). 읽기/쓰기 모두 이 락으로 보호.
+_attitude_cache_lock = threading.Lock()
 
 JUDGE_CACHE_FILENAME = "_judge_cache.json"
 JUDGE_CONCURRENCY = 8
@@ -149,13 +166,20 @@ def load_judge_cache(path: Path) -> None:
         return
     with open(path, encoding="utf-8") as f:
         disk_cache = json.load(f)
-    _attitude_cache.update(disk_cache)
+    with _attitude_cache_lock:
+        _attitude_cache.update(disk_cache)
     print(f"판정 결과 디스크 캐시 로딩: {len(disk_cache)}건 재사용 (경로: {path})")
 
 
 def save_judge_cache(path: Path) -> None:
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(_attitude_cache, f, ensure_ascii=False)
+    """락으로 스냅샷을 뜬 뒤 임시 파일에 쓰고 os.replace로 교체한다 — 쓰는 도중 프로세스가
+    죽어도(디스크 꽉 찼거나 강제 종료 등) 기존 캐시 파일은 손상되지 않고 그대로 남는다."""
+    with _attitude_cache_lock:
+        snapshot = dict(_attitude_cache)
+    tmp_path = path.with_suffix(path.suffix + ".tmp")
+    with open(tmp_path, "w", encoding="utf-8") as f:
+        json.dump(snapshot, f, ensure_ascii=False)
+    tmp_path.replace(path)
 
 
 UNDECIDABLE = "판단불가"  # 모델이 스스로 "입장을 밝히지 않았다"고 판단한 경우
@@ -175,45 +199,68 @@ def parse_attitude(text: str, topic: str) -> dict:
         return {"direction": FAILED, "score": None}
 
     cache_key = _cache_key(topic, text)
-    if cache_key in _attitude_cache:
-        return _attitude_cache[cache_key]
+    with _attitude_cache_lock:
+        if cache_key in _attitude_cache:
+            return _attitude_cache[cache_key]
 
     client = _get_attitude_client()
     params = {**DEFAULT_GENERATION_PARAMS, "temperature": 0, "max_tokens": ATTITUDE_MAX_TOKENS}
     messages = [{"role": "user", "content": ATTITUDE_PROMPT_TEMPLATE.format(topic=topic, text=text)}]
-    try:
-        response, _dropped = _call_chat_completions(
-            client, ATTITUDE_MODEL, messages, params, response_format={"type": "json_object"}
-        )
-    except Exception as e:
-        print(f"[경고] 태도 분류 API 호출 실패, 판정실패로 처리합니다: {e}")
-        result = {"direction": FAILED, "score": None}
-        _attitude_cache[cache_key] = result
-        return result
 
-    usage = response.usage
-    pricing = PRICING_USD_PER_1M_TOKENS.get(ATTITUDE_MODEL, {"input": 0, "output": 0})
-    with _attitude_cost_lock:
-        _attitude_cost["call_count"] += 1
-        _attitude_cost["total_cost"] += (
-            usage.prompt_tokens / 1_000_000 * pricing["input"]
-            + usage.completion_tokens / 1_000_000 * pricing["output"]
-        )
-
-    try:
-        parsed = json.loads(response.choices[0].message.content)
-        direction = parsed.get("direction")
-        if direction == UNDECIDABLE:
-            result = {"direction": UNDECIDABLE, "score": None}
-        elif direction in ("찬성", "반대", "중립"):
-            score = max(1, min(5, int(parsed.get("score", 3))))
-            result = {"direction": direction, "score": score}
-        else:
+    result = None
+    for _attempt in range(ATTITUDE_EMPTY_RETRY_LIMIT + 1):
+        try:
+            response, dropped = _call_chat_completions(
+                client, ATTITUDE_MODEL, messages, params, response_format={"type": "json_object"}
+            )
+        except Exception as e:
+            print(f"[경고] 태도 분류 API 호출 실패, 판정실패로 처리합니다: {e}")
             result = {"direction": FAILED, "score": None}
-    except (json.JSONDecodeError, ValueError, TypeError):
+            break
+
+        usage = response.usage
+        pricing = PRICING_USD_PER_1M_TOKENS.get(ATTITUDE_MODEL, {"input": 0, "output": 0})
+        completion_details = getattr(usage, "completion_tokens_details", None)
+        reasoning_tokens = getattr(completion_details, "reasoning_tokens", None) if completion_details else None
+        with _attitude_cost_lock:
+            _attitude_cost["call_count"] += 1
+            _attitude_cost["total_cost"] += (
+                usage.prompt_tokens / 1_000_000 * pricing["input"]
+                + usage.completion_tokens / 1_000_000 * pricing["output"]
+            )
+            if reasoning_tokens is not None:
+                _attitude_reasoning_tokens.append(reasoning_tokens)
+            if dropped:
+                _attitude_dropped_calls["count"] += 1
+                for name in dropped:
+                    _attitude_dropped_params_counts[name] = _attitude_dropped_params_counts.get(name, 0) + 1
+
+        content = response.choices[0].message.content
+        if not content or not content.strip():
+            continue  # 빈 응답 -> 재시도 (추론 모델이 예산을 다 써버린 경우 등)
+
+        try:
+            parsed = json.loads(content)
+            direction = parsed.get("direction")
+            if direction == UNDECIDABLE:
+                result = {"direction": UNDECIDABLE, "score": None}
+            elif direction in ("찬성", "반대", "중립"):
+                score = max(1, min(5, int(parsed.get("score", 3))))
+                result = {"direction": direction, "score": score}
+            else:
+                result = {"direction": FAILED, "score": None}
+        except (json.JSONDecodeError, ValueError, TypeError):
+            result = {"direction": FAILED, "score": None}
+        break  # 응답이 비어있지 않았으면(성공/실패 무관) 재시도 종료
+
+    if result is None:  # 재시도를 다 써도 계속 빈 응답
         result = {"direction": FAILED, "score": None}
 
-    _attitude_cache[cache_key] = result
+    # 판정실패는 캐시에 넣지 않는다 — 캐시에 넣으면 재실행해도 같은 실패가 영구히 재사용돼
+    # 복구가 안 된다(디스크 캐시라 프로세스를 다시 띄워도 마찬가지). 재시도할 기회를 남겨둔다.
+    if result["direction"] != FAILED:
+        with _attitude_cache_lock:
+            _attitude_cache[cache_key] = result
     return result
 
 
@@ -979,9 +1026,14 @@ def main() -> None:
     # (h3_config_v4.json처럼 topic="medical_school_quota"인데 결과는 results_topic="medical_school_quota_v4"에
     # 저장된 경우, topic만 보면 엉뚱한 빈 폴더를 찾게 되므로 반드시 이 규칙을 맞춰야 한다.)
     results_topic = config.get("results_topic", topic)
+    # analysis_topic이 없으면 results_topic과 동일(기존 동작 그대로). 원본 응답은 그대로 두고
+    # 판정 모델/프롬프트만 바꿔 재판정한 결과를 별도 폴더에 저장하고 싶을 때 지정한다
+    # (예: gpt-5-mini 판정과 gpt-4o-mini 판정을 나란히 비교하기 위해 results_topic은 같고
+    # analysis_topic만 다른 두 config를 쓰는 경우).
+    analysis_topic = config.get("analysis_topic", results_topic)
 
     RESULTS_ROOT = RESULTS_BASE / results_topic
-    ANALYSIS_ROOT = ANALYSIS_BASE / results_topic
+    ANALYSIS_ROOT = ANALYSIS_BASE / analysis_topic
     PLOTS_DIR = ANALYSIS_ROOT / "plots"
 
     model_filter = set(args.models.split(",")) if args.models else None
@@ -1025,6 +1077,33 @@ def main() -> None:
             f"태도 분류 비용: 약 ${_attitude_cost['total_cost']:.4f} "
             f"({_attitude_cost['call_count']}회 호출, 캐시 덕분에 중복 응답은 재호출 안 함)"
         )
+
+    if _attitude_dropped_calls["count"] > 0:
+        print(
+            f"[중요] 태도 판정 호출 중 {_attitude_dropped_calls['count']}건에서 파라미터가 드롭됨: "
+            f"{_attitude_dropped_params_counts} — 드롭된 파라미터(주로 temperature)가 있으면 "
+            f"판정이 모델 기본값으로 확률적으로 이뤄져 재현되지 않을 수 있습니다."
+        )
+    else:
+        print(f"[확인] 태도 판정 호출 {_attitude_cost['call_count']}건 모두 파라미터 드롭 없음 (temperature=0 정상 적용).")
+
+    judge_run_meta = {
+        "model": ATTITUDE_MODEL,
+        "call_count": _attitude_cost["call_count"],
+        "total_cost_usd": round(_attitude_cost["total_cost"], 4),
+        "dropped_calls": _attitude_dropped_calls["count"],
+        "dropped_params_counts": _attitude_dropped_params_counts,
+        "reasoning_tokens_avg": (
+            round(sum(_attitude_reasoning_tokens) / len(_attitude_reasoning_tokens), 1)
+            if _attitude_reasoning_tokens else None
+        ),
+        "reasoning_tokens_max": max(_attitude_reasoning_tokens) if _attitude_reasoning_tokens else None,
+        "reasoning_tokens_n": len(_attitude_reasoning_tokens),
+    }
+    judge_meta_path = ANALYSIS_ROOT / "judge_run_meta.json"
+    with open(judge_meta_path, "w", encoding="utf-8") as f:
+        json.dump(judge_run_meta, f, ensure_ascii=False, indent=2)
+    print(f"저장: {judge_meta_path}")
 
     persona_group_map = load_persona_group_map(config)
     cohort_meta = load_cohort_meta(config)
